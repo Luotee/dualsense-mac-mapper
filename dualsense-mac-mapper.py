@@ -171,14 +171,28 @@ atexit.register(release_all_keys)
 signal.signal(signal.SIGINT, lambda s, f: sys.exit(0))
 
 def main():
-    if pygame.joystick.get_count() == 0:
-        print("❌ 找不到搖桿")
-        sys.exit(1)
-    joystick = pygame.joystick.Joystick(0)
-    joystick.init()
-    print(f"🎮 已啟用: {joystick.get_name()}")
-    try:
-        while True:
+    joystick = None
+    last_joystick_name = None
+    had_joystick = False
+    while True:
+        try:
+            # 每秒檢查搖桿數量
+            if pygame.joystick.get_count() == 0:
+                if had_joystick:
+                    print("⚠️ 搖桿已斷線，請重新連接...")
+                    had_joystick = False
+                joystick = None
+                time.sleep(1)
+                continue
+            if joystick is None or not joystick.get_init():
+                pygame.joystick.quit()
+                pygame.joystick.init()
+                joystick = pygame.joystick.Joystick(0)
+                joystick.init()
+                last_joystick_name = joystick.get_name()
+                print(f"🎮 已啟用: {last_joystick_name}")
+                had_joystick = True
+            # 處理搖桿事件
             pygame.event.pump()
             process_joystick(joystick)
             for i in range(15):
@@ -187,10 +201,13 @@ def main():
                 else:
                     stop_key(i)
             time.sleep(0.01)
-    except KeyboardInterrupt:
-        pass
-    finally:
-        release_all_keys()
+        except KeyboardInterrupt:
+            break
+        except Exception as e:
+            print(f"[錯誤] {e}")
+            joystick = None
+            time.sleep(1)
+    release_all_keys()
 
 if __name__ == "__main__":
     main()
