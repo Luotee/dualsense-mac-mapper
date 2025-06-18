@@ -1,8 +1,8 @@
 # dualsense-mac-mapper
 
 #### Test environment
-- Macbook M2 (macOS 15.5)
-- Python 3.13.5
+- Macbook M2 (macOS 15.5) & Python 3.13.5
+- Windows 11 & Python 3.11
   
 
 # 🎮 DualSense Mac Mapper
@@ -18,6 +18,7 @@ A Python-based key remapper for macOS (Apple Silicon) that maps every button and
 - Deadzone support and trigger threshold control
 - Custom macro definition system with randomized delays
 - Pygame + pynput based — no special kernel extensions needed
+- Joystick reconnection recovery supported (only tested on win11)
 
 ---
 
