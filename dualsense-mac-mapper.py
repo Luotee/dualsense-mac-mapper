@@ -6,7 +6,7 @@ import signal
 import atexit
 import sys
 from pynput.keyboard import Controller, Key
-
+ 
 # === Setup ===
 keyboard = Controller()
 pygame.init()
