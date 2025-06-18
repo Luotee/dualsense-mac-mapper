@@ -16,7 +16,6 @@ AXIS_DEADZONE = 0.4
 TRIGGER_THRESHOLD = 0.5
 
 key_states = {}
-threads = {}
 lock = threading.Lock()
 macro_triggered = set()
 
@@ -57,7 +56,6 @@ key_mapping = {
     23: macro_A,       # L2（類比板機）觸發巨集
     24: 'a',           # R2（類比板機）
 }
-
 
 # === Reverse Mapping for key release tracking ===
 reverse_mapping = {}
@@ -124,14 +122,14 @@ def start_key(index):
             return
     t = threading.Thread(target=press_loop, args=(index, key), daemon=True)
     t.start()
-    threads[index] = t
+
 
 def stop_key(index):
     with lock:
         key_states[index] = False
         macro_triggered.discard(index)
 
-def process_joystick():
+def process_joystick(joystick):
     lx = joystick.get_axis(0)
     ly = joystick.get_axis(1)
     rx = joystick.get_axis(2)
@@ -163,29 +161,36 @@ def release_all_keys():
             k = key_mapping.get(index)
             if k and not callable(k):
                 key_release(k)
+    try:
+        pygame.joystick.quit()
+        pygame.quit()
+    except Exception:
+        pass
 
 atexit.register(release_all_keys)
 signal.signal(signal.SIGINT, lambda s, f: sys.exit(0))
 
-# === Start ===
-if pygame.joystick.get_count() == 0:
-    print("❌ 找不到搖桿")
-    sys.exit(1)
+def main():
+    if pygame.joystick.get_count() == 0:
+        print("❌ 找不到搖桿")
+        sys.exit(1)
+    joystick = pygame.joystick.Joystick(0)
+    joystick.init()
+    print(f"🎮 已啟用: {joystick.get_name()}")
+    try:
+        while True:
+            pygame.event.pump()
+            process_joystick(joystick)
+            for i in range(15):
+                if joystick.get_button(i):
+                    start_key(i)
+                else:
+                    stop_key(i)
+            time.sleep(0.01)
+    except KeyboardInterrupt:
+        pass
+    finally:
+        release_all_keys()
 
-joystick = pygame.joystick.Joystick(0)
-joystick.init()
-print(f"🎮 已啟用: {joystick.get_name()}")
-
-# === Main Loop ===
-try:
-    while True:
-        pygame.event.pump()
-        process_joystick()
-        for i in range(15):
-            if joystick.get_button(i):
-                start_key(i)
-            else:
-                stop_key(i)
-        time.sleep(0.01)
-except KeyboardInterrupt:
-    sys.exit(0)
+if __name__ == "__main__":
+    main()
