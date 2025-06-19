@@ -94,11 +94,29 @@ def press_loop(index, key):
     try:
         if callable(key):
             macro_triggered.add(index)
-            while index in macro_triggered:
+            while True:
+                with lock:
+                    if index not in macro_triggered:
+                        break
                 for k, act, tmin, tmax in key():
+                    with lock:
+                        if index not in macro_triggered:
+                            break
                     if k and act == 'down': key_press(k)
                     if k and act == 'up': key_release(k)
-                    time.sleep(random.uniform(tmin, tmax))
+                    # sleep時細分檢查flag，確保macro可即時中斷
+                    total_sleep = random.uniform(tmin, tmax)
+                    slept = 0
+                    while slept < total_sleep:
+                        with lock:
+                            if index not in macro_triggered:
+                                break
+                        s = min(0.01, total_sleep - slept)
+                        time.sleep(s)
+                        slept += s
+                    with lock:
+                        if index not in macro_triggered:
+                            break
         else:
             key_press(key)
             while True:
