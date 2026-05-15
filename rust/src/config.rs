@@ -94,6 +94,17 @@ impl Config {
                 }
             }
         }
+        for (id, entry) in &self.buttons {
+            if let Binding::Key(k) = &entry.binding {
+                parse_key(k).with_context(|| format!("button {id}"))?;
+            }
+        }
+        for (name, m) in &self.macros {
+            for (i, step) in m.steps.iter().enumerate() {
+                parse_key(&step.key)
+                    .with_context(|| format!("macro \"{name}\" step {i}"))?;
+            }
+        }
         for (name, m) in &self.macros {
             for (i, step) in m.steps.iter().enumerate() {
                 if step.delay_ms[0] >= step.delay_ms[1] {
@@ -106,6 +117,46 @@ impl Config {
         }
         Ok(())
     }
+}
+
+use enigo::Key;
+
+pub fn parse_key(name: &str) -> Result<Key> {
+    if name.chars().count() == 1 {
+        let c = name.chars().next().unwrap();
+        return Ok(Key::Unicode(c));
+    }
+    let lower = name.to_ascii_lowercase();
+    Ok(match lower.as_str() {
+        "shift"   => Key::Shift,
+        "control" | "ctrl" => Key::Control,
+        "alt"     => Key::Alt,
+        "meta" | "win" | "cmd" => Key::Meta,
+        "left"    => Key::LeftArrow,
+        "right"   => Key::RightArrow,
+        "up"      => Key::UpArrow,
+        "down"    => Key::DownArrow,
+        "space"   => Key::Space,
+        "enter" | "return" => Key::Return,
+        "tab"     => Key::Tab,
+        "escape" | "esc" => Key::Escape,
+        "backspace" => Key::Backspace,
+        "delete" | "del" => Key::Delete,
+        "home"    => Key::Home,
+        "end"     => Key::End,
+        "pageup"  => Key::PageUp,
+        "pagedown" => Key::PageDown,
+        f if f.starts_with('f') && f[1..].parse::<u32>().is_ok() => {
+            let n: u32 = f[1..].parse().unwrap();
+            match n {
+                1 => Key::F1, 2 => Key::F2, 3 => Key::F3, 4 => Key::F4,
+                5 => Key::F5, 6 => Key::F6, 7 => Key::F7, 8 => Key::F8,
+                9 => Key::F9, 10 => Key::F10, 11 => Key::F11, 12 => Key::F12,
+                _ => bail!("unknown key name \"{name}\" (F-key out of range)"),
+            }
+        }
+        _ => bail!("unknown key name \"{name}\""),
+    })
 }
 
 #[cfg(test)]
@@ -205,6 +256,39 @@ mod tests {
         cfg.min_press_ms = [30, 8];
         let err = cfg.validate().unwrap_err().to_string();
         assert!(err.contains("min_press_ms"), "got: {err}");
+    }
+
+    #[test]
+    fn parses_letter_keys() {
+        assert!(matches!(parse_key("x"), Ok(_)));
+        assert!(matches!(parse_key("A"), Ok(_)));
+    }
+
+    #[test]
+    fn parses_named_keys() {
+        assert!(matches!(parse_key("Shift"), Ok(_)));
+        assert!(matches!(parse_key("Left"), Ok(_)));
+        assert!(matches!(parse_key("Up"), Ok(_)));
+        assert!(matches!(parse_key("F1"), Ok(_)));
+    }
+
+    #[test]
+    fn rejects_unknown_key() {
+        let err = parse_key("PotatoButton").unwrap_err().to_string();
+        assert!(err.contains("unknown key name"), "got: {err}");
+    }
+
+    #[test]
+    fn validate_flags_unknown_key_in_binding() {
+        let mut cfg = sample_full_config();
+        cfg.buttons.insert("0".into(), ButtonEntry {
+            label: "Cross".into(),
+            binding: Binding::Key("PotatoButton".into()),
+        });
+        let err = cfg.validate().unwrap_err();
+        let s = format!("{err:#}");
+        assert!(s.contains("button 0"), "got: {s}");
+        assert!(s.contains("PotatoButton"), "got: {s}");
     }
 
     fn sample_full_config() -> Config {
