@@ -18,11 +18,12 @@ pub struct RunOptions {
 pub fn run(cfg: Config, opts: RunOptions) -> Result<()> {
     let state: SharedKeyState = safety::shared();
     let tick_jitter = cfg.tick_jitter_ms;
+    let min_press = cfg.min_press_ms;
     install_panic_hook(state.clone());
 
     let mut mapper = Mapper::new(cfg);
     let mut source = GamepadSource::new()?;
-    let mut sink = KeyboardSink::new(state.clone(), tick_jitter, opts.dry_run)?;
+    let mut sink = KeyboardSink::new(state.clone(), tick_jitter, min_press, opts.dry_run)?;
 
     let (tx, rx) = mpsc::channel::<KeyAction>();
     let mut macros = MacroEngine::new(tx.clone());
