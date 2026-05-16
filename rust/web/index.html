@@ -3,10 +3,26 @@
 <head>
   <meta charset="UTF-8">
   <title>DualSense Mapper</title>
-  <style>body{font-family:system-ui;padding:40px;color:#657b83;background:#fdf6e3}</style>
+  <style>
+    body { font-family: system-ui; padding: 40px; color: #657b83; background: #fdf6e3; }
+    h1   { color: #073642; }
+    code { background: rgba(38,139,210,0.10); color: #268bd2; padding: 2px 6px; border-radius: 3px; }
+  </style>
 </head>
 <body>
-  <h1 style="color:#073642">DualSense Mapper</h1>
-  <p>GUI scaffold — Phase 3 placeholder. UI lands in Phase 4.</p>
+  <h1>DualSense Mapper</h1>
+  <p id="status">Loading config…</p>
+  <script type="module" src="./ipc.js"></script>
+  <script type="module">
+    import { invoke } from './ipc.js';
+    try {
+      const cfg = await invoke('get_config');
+      document.getElementById('status').innerHTML =
+        `Loaded config v${cfg.version}, <code>${Object.keys(cfg.buttons).length}</code> buttons, ` +
+        `<code>${Object.keys(cfg.macros).length}</code> macros.`;
+    } catch (e) {
+      document.getElementById('status').textContent = `Error loading config: ${e}`;
+    }
+  </script>
 </body>
 </html>

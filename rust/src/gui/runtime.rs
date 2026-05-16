@@ -63,6 +63,9 @@ pub fn run(cfg: Config, opts: RunOptions) -> Result<()> {
 
             Ok(())
         })
+        .invoke_handler(tauri::generate_handler![
+            crate::gui::commands::get_config,
+        ])
         .manage(handle_for_state)
         .manage(opts.config_path.clone())
         .on_window_event(|window, event| {

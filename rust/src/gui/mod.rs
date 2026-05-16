@@ -10,6 +10,9 @@
 pub mod file_watcher;
 
 #[cfg(feature = "gui")]
+pub mod commands;
+
+#[cfg(feature = "gui")]
 pub mod runtime;
 
 #[cfg(feature = "gui")]
