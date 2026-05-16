@@ -41,21 +41,55 @@ impl MacroEngine {
 }
 
 fn run_macro(def: MacroDef, cancel: Arc<AtomicBool>, tx: Sender<KeyAction>) {
+    // Keys this macro has Pressed but not yet Released. If we exit (cancelled
+    // or natural end) with anything still held, emit Release for each so the
+    // KeyboardSink refcount returns to zero and OS state is balanced.
+    // Without this, mid-macro cancellation strands a KEYDOWN at the OS level
+    // and any later binding to the same key appears to "fail" (it never gets
+    // a fresh edge because refcount is already > 0).
+    let mut held: std::collections::HashSet<String> = std::collections::HashSet::new();
+
+    let drain = |held: &mut std::collections::HashSet<String>, tx: &Sender<KeyAction>| {
+        for k in held.drain() {
+            tracing::info!(key = %k, "macro draining unmatched Press on exit");
+            let _ = tx.send(KeyAction::Release(k));
+        }
+    };
+
     loop {
         for step in &def.steps {
-            if cancel.load(Ordering::SeqCst) { return; }
+            if cancel.load(Ordering::SeqCst) {
+                drain(&mut held, &tx);
+                return;
+            }
             let action = match step.action {
-                StepAction::Down => KeyAction::Press(step.key.clone()),
-                StepAction::Up   => KeyAction::Release(step.key.clone()),
+                StepAction::Down => {
+                    held.insert(step.key.clone());
+                    KeyAction::Press(step.key.clone())
+                }
+                StepAction::Up => {
+                    held.remove(&step.key);
+                    KeyAction::Release(step.key.clone())
+                }
             };
-            if tx.send(action).is_err() { return; } // receiver gone
+            if tx.send(action).is_err() {
+                // Receiver gone; can't drain via channel — refcount will be
+                // cleaned up by KeyboardSink::Drop on shutdown anyway.
+                return;
+            }
             let [lo, hi] = step.delay_ms;
             // Config validation guarantees lo < hi, so the inclusive range is non-empty.
             let ms = fastrand::u32(lo..=hi);
             interruptible_sleep(Duration::from_millis(ms as u64), &cancel);
-            if cancel.load(Ordering::SeqCst) { return; }
+            if cancel.load(Ordering::SeqCst) {
+                drain(&mut held, &tx);
+                return;
+            }
         }
-        if !def.repeat { return; }
+        if !def.repeat {
+            drain(&mut held, &tx);
+            return;
+        }
     }
 }
 
@@ -107,7 +141,10 @@ mod tests {
     }
 
     #[test]
-    fn non_repeat_macro_runs_once() {
+    fn non_repeat_macro_runs_once_and_drains() {
+        // A non-repeat macro that only Presses must, on natural exit, emit
+        // Release for every Press it didn't pair up. Otherwise it would leak
+        // KEYDOWNs into the OS state (same class of bug as mid-loop cancel).
         let (tx, rx) = mpsc::channel::<KeyAction>();
         let mut eng = MacroEngine::new(tx);
         let def = MacroDef {
@@ -123,8 +160,60 @@ mod tests {
         while let Ok(a) = rx.recv_timeout(Duration::from_millis(200)) {
             got.push(a);
         }
-        assert_eq!(got.len(), 2, "got {got:?}");
+        // 2 Presses + 2 drained Releases.
+        assert_eq!(got.len(), 4, "got {got:?}");
+        // Step order: Press Left, Press Right come out in order.
         assert!(matches!(got[0], KeyAction::Press(ref k) if k == "Left"));
         assert!(matches!(got[1], KeyAction::Press(ref k) if k == "Right"));
+        // Drain order is HashSet iteration order — not stable — so assert membership.
+        let tail: Vec<&KeyAction> = got[2..].iter().collect();
+        assert!(tail.iter().any(|a| matches!(a, KeyAction::Release(k) if k == "Left")),
+                "drain missing Release Left: {got:?}");
+        assert!(tail.iter().any(|a| matches!(a, KeyAction::Release(k) if k == "Right")),
+                "drain missing Release Right: {got:?}");
+    }
+
+    #[test]
+    fn cancel_between_press_and_release_drains_held_keys() {
+        // macro_A-style: Press Left, delay 200ms, Release Left, delay 200ms, ...
+        // Stop while we're inside the post-Press delay; the engine MUST emit
+        // a synthetic Release Left before the thread exits, otherwise the
+        // refcounted KEYDOWN at the OS level is stranded.
+        let (tx, rx) = mpsc::channel::<KeyAction>();
+        let mut eng = MacroEngine::new(tx);
+        let def = MacroDef {
+            repeat: true,
+            steps: vec![
+                MacroStep { key: "Left".into(),  action: StepAction::Down, delay_ms: [200, 250] },
+                MacroStep { key: "Left".into(),  action: StepAction::Up,   delay_ms: [200, 250] },
+                MacroStep { key: "Right".into(), action: StepAction::Down, delay_ms: [200, 250] },
+                MacroStep { key: "Right".into(), action: StepAction::Up,   delay_ms: [200, 250] },
+            ],
+        };
+        eng.start(23, def);
+
+        // First emitted action is Press Left.
+        let first = rx.recv_timeout(Duration::from_millis(500)).expect("first action");
+        assert!(matches!(first, KeyAction::Press(ref k) if k == "Left"));
+
+        // Stop mid-delay, before the macro would naturally emit Release Left.
+        std::thread::sleep(Duration::from_millis(50));
+        eng.stop(23);
+
+        // Collect every remaining action before the channel drains.
+        let mut after = Vec::new();
+        while let Ok(a) = rx.recv_timeout(Duration::from_millis(300)) {
+            after.push(a);
+        }
+        // The drain must contain at least one Release Left.
+        assert!(
+            after.iter().any(|a| matches!(a, KeyAction::Release(k) if k == "Left")),
+            "expected drained Release Left after cancel, got {after:?}"
+        );
+        // And must NOT contain any Press Left (we cancelled before next iteration).
+        assert!(
+            !after.iter().any(|a| matches!(a, KeyAction::Press(k) if k == "Left")),
+            "expected no further Press Left after cancel, got {after:?}"
+        );
     }
 }
