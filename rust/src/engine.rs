@@ -322,6 +322,13 @@ fn run_loop(h: Arc<HandleInner>, mut source: GamepadSource, dry_run: bool) -> Re
                 let cfg = h.config.read().unwrap();
                 let actions = mapper.handle(ev);
                 drop(cfg); // release lock before execute calls into sink
+                for (id, pressed) in mapper.take_visual_transitions() {
+                    let _ = if pressed {
+                        h.event_tx.send(EngineEvent::ButtonDown { id })
+                    } else {
+                        h.event_tx.send(EngineEvent::ButtonUp { id })
+                    };
+                }
                 for action in &actions {
                     execute_action(action, &mut sink, &mut macros, mapper.config(), &h.event_tx);
                 }

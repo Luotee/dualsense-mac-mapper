@@ -27,17 +27,17 @@
   "tick_jitter_ms": [0, 3],
   "log_events": true,
   "buttons": {
-    "0":  { "label": "Cross（叉叉）",            "type": "key",     "value": "x" },
-    "1":  { "label": "Circle（圈圈）",           "type": "key",     "value": "3" },
-    "2":  { "label": "Square（正方形）",         "type": "key",     "value": "z" },
-    "3":  { "label": "Triangle（三角）",         "type": "unbound" },
+    "0":  { "label": "Cross（叉叉）",            "type": "key",     "value": "Alt" },
+    "1":  { "label": "Circle（圈圈）",           "type": "key",     "value": "z" },
+    "2":  { "label": "Square（正方形）",         "type": "key",     "value": "Shift" },
+    "3":  { "label": "Triangle（三角）",         "type": "key",     "value": "a" },
     "4":  { "label": "Share（拍照鍵）",          "type": "unbound" },
-    "5":  { "label": "PS 按鈕",                  "type": "unbound" },
-    "6":  { "label": "Options（Menu 鍵）",       "type": "unbound" },
+    "5":  { "label": "PS 按鈕",                  "type": "key",     "value": "Space" },
+    "6":  { "label": "Options（Menu 鍵）",       "type": "key",     "value": "Enter" },
     "7":  { "label": "L3",                       "type": "unbound" },
     "8":  { "label": "R3",                       "type": "unbound" },
-    "9":  { "label": "L1",                       "type": "key",     "value": "1" },
-    "10": { "label": "R1",                       "type": "key",     "value": "Shift" },
+    "9":  { "label": "L1",                       "type": "unbound" },
+    "10": { "label": "R1",                       "type": "unbound" },
     "11": { "label": "D-pad ↑",                  "type": "key",     "value": "Up" },
     "12": { "label": "D-pad ↓",                  "type": "key",     "value": "Down" },
     "13": { "label": "D-pad ←",                  "type": "key",     "value": "Left" },
@@ -50,8 +50,8 @@
     "20": { "label": "R-stick ↓",                "type": "unbound" },
     "21": { "label": "R-stick ←",                "type": "unbound" },
     "22": { "label": "R-stick →",                "type": "unbound" },
-    "23": { "label": "L2（類比板機）觸發巨集",   "type": "macro",   "value": "macro_A" },
-    "24": { "label": "R2（類比板機）",           "type": "key",     "value": "a" }
+    "23": { "label": "L2（類比板機）",           "type": "unbound" },
+    "24": { "label": "R2（類比板機）",           "type": "key",     "value": "Shift" }
   },
   "macros": {
     "macro_A": {
