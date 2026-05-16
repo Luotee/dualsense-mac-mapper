@@ -90,16 +90,22 @@ impl KeyboardSink {
     }
 
     fn emit(&mut self, key_name: &str, dir: Direction) -> Result<()> {
-        tracing::debug!(key = %key_name, ?dir, "synth");
+        tracing::info!(key = %key_name, ?dir, "synth");
         if self.dry_run {
             println!("[dry-run] {dir:?} {key_name}");
             return Ok(());
         }
         let k = parse_key(key_name)?;
+        tracing::debug!(key = %key_name, parsed = ?k, "parse_key");
         let enigo = self.enigo.as_mut()
             .expect("non-dry-run KeyboardSink must hold an Enigo (constructed in new())");
-        enigo.key(k, dir)?;
-        Ok(())
+        match enigo.key(k, dir) {
+            Ok(()) => Ok(()),
+            Err(e) => {
+                tracing::error!(key = %key_name, ?dir, error = %e, "enigo key failed");
+                Err(anyhow::anyhow!("enigo key {key_name:?} {dir:?}: {e}"))
+            }
+        }
     }
 
     fn jittered_pause(&self) {

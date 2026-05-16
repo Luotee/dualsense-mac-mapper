@@ -48,16 +48,31 @@ impl Mapper {
 
     fn physical_down(&self, id: u32) -> Vec<KeyAction> {
         match self.binding_for(id) {
-            Some(Binding::Key(k))   => vec![KeyAction::Press(k.clone())],
-            Some(Binding::Macro(n)) => vec![KeyAction::MacroStart { name: n.clone(), source_id: id }],
-            _ => Vec::new(),
+            Some(Binding::Key(k)) => {
+                tracing::info!(id, key = %k, "press");
+                vec![KeyAction::Press(k.clone())]
+            }
+            Some(Binding::Macro(n)) => {
+                tracing::info!(id, macro_name = %n, "macro start");
+                vec![KeyAction::MacroStart { name: n.clone(), source_id: id }]
+            }
+            _ => {
+                tracing::debug!(id, "physical_down: id has no binding or is unbound");
+                Vec::new()
+            }
         }
     }
 
     fn physical_up(&self, id: u32) -> Vec<KeyAction> {
         match self.binding_for(id) {
-            Some(Binding::Key(k))   => vec![KeyAction::Release(k.clone())],
-            Some(Binding::Macro(_)) => vec![KeyAction::MacroStop { source_id: id }],
+            Some(Binding::Key(k)) => {
+                tracing::info!(id, key = %k, "release");
+                vec![KeyAction::Release(k.clone())]
+            }
+            Some(Binding::Macro(_)) => {
+                tracing::info!(id, "macro stop");
+                vec![KeyAction::MacroStop { source_id: id }]
+            }
             _ => Vec::new(),
         }
     }
