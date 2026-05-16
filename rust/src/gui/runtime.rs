@@ -69,6 +69,8 @@ pub fn run(cfg: Config, opts: RunOptions) -> Result<()> {
             crate::gui::commands::set_macro,
             crate::gui::commands::delete_macro,
             crate::gui::commands::rename_macro,
+            crate::gui::commands::set_settings,
+            crate::gui::commands::reset_settings,
         ])
         .manage(handle_for_state)
         .manage(opts.config_path.clone())

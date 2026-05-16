@@ -16,6 +16,7 @@
 use crate::config::{Binding, ButtonEntry, Config, MacroDef};
 use crate::config_io::{write_atomic, ConfigDoc};
 use crate::engine::Handle;
+use serde::{Deserialize, Serialize};
 use std::path::Path;
 #[cfg(feature = "gui")]
 use std::path::PathBuf;
@@ -219,4 +220,83 @@ pub fn rename_macro_impl(
     write_atomic(config_path, &doc)?;
     *engine.config_write() = doc.typed().clone();
     Ok(())
+}
+
+// ─── Settings ────────────────────────────────────────────────────────────────
+
+/// Shape of the Settings tab form on the frontend. Deserialised from a
+/// `#[tauri::command]` call.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Settings {
+    pub deadzone: f32,
+    pub trigger_threshold: f32,
+    pub min_press_ms: [u32; 2],
+    pub tick_jitter_ms: [u32; 2],
+    pub log_events: bool,
+}
+
+impl Settings {
+    /// Spec §9 — the factory defaults that ship with the example config.
+    pub fn defaults() -> Self {
+        Self {
+            deadzone: 0.4,
+            trigger_threshold: 0.5,
+            min_press_ms: [8, 25],
+            tick_jitter_ms: [0, 3],
+            log_events: true,
+        }
+    }
+}
+
+/// Tauri command: apply settings from the frontend Settings tab, validate,
+/// atomically write to disk, and hot-reload the live engine.
+#[cfg_attr(feature = "gui", tauri::command)]
+#[cfg(feature = "gui")]
+pub fn set_settings(
+    engine: State<'_, Handle>,
+    config_path: State<'_, PathBuf>,
+    settings: Settings,
+) -> Result<(), String> {
+    set_settings_impl(&*engine, &config_path, settings).map_err(|e| format!("{e:#}"))
+}
+
+/// Pure implementation of `set_settings` callable without `tauri::State`.
+pub fn set_settings_impl(
+    engine: &Handle,
+    config_path: &Path,
+    s: Settings,
+) -> anyhow::Result<()> {
+    let mut doc = ConfigDoc::load(config_path)?;
+    doc.set_deadzone(s.deadzone);
+    doc.set_trigger_threshold(s.trigger_threshold);
+    doc.set_min_press_ms_unchecked(s.min_press_ms);
+    doc.set_tick_jitter_ms_unchecked(s.tick_jitter_ms);
+    doc.set_log_events(s.log_events);
+    doc.validate()?;
+    write_atomic(config_path, &doc)?;
+    let mut live = engine.config_write();
+    live.deadzone = s.deadzone;
+    live.trigger_threshold = s.trigger_threshold;
+    live.min_press_ms = s.min_press_ms;
+    live.tick_jitter_ms = s.tick_jitter_ms;
+    live.log_events = s.log_events;
+    Ok(())
+}
+
+/// Tauri command: reset all settings to factory defaults (Spec §9).
+#[cfg_attr(feature = "gui", tauri::command)]
+#[cfg(feature = "gui")]
+pub fn reset_settings(
+    engine: State<'_, Handle>,
+    config_path: State<'_, PathBuf>,
+) -> Result<(), String> {
+    reset_settings_impl(&*engine, &config_path).map_err(|e| format!("{e:#}"))
+}
+
+/// Pure implementation of `reset_settings` callable without `tauri::State`.
+pub fn reset_settings_impl(
+    engine: &Handle,
+    config_path: &Path,
+) -> anyhow::Result<()> {
+    set_settings_impl(engine, config_path, Settings::defaults())
 }
