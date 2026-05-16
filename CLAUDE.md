@@ -104,7 +104,7 @@ regresses real, observed bugs the codebase already fixed once:
 8. **The exe is double-clicked, not invoked from a terminal.** Primary
    end-user flow on Windows is Explorer → double-click → GUI window
    opens. That means:
-   - GUI mode (default in v0.2.0+) is the user-facing path. The
+   - GUI mode (default in v1.0.0+) is the user-facing path. The
      window must be visible within ~1 second of process start.
      Errors before window creation must render to a fallback modal
      (e.g. `MessageBoxW`), not flash and disappear.

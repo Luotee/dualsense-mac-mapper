@@ -3,9 +3,12 @@
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/);
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.2.0] - 2026-05-16
+## [1.0.0] - 2026-05-16
 
-First GUI release. The exe now opens a real window with a controller
+First GUI release. Version jumps from `0.1.x` straight to `1.0.0` to
+mark the project as feature-complete for Phase 1 (Windows GUI mapper);
+the underlying changeset is the same one previously tracked as `0.2.0`
+during development. The exe now opens a real window with a controller
 diagram, click-to-capture remap, step-list macro editor, Solarized Light
 theme, and a tray-resident background mapper. The v0.1.x console flow
 stays available via the new `--cli` flag.
@@ -87,7 +90,7 @@ stays available via the new `--cli` flag.
   webkit2gtk dev libs still work. Production builds use
   `cargo build --release --target x86_64-pc-windows-gnu --features gui`.
 
-[0.2.0]: https://github.com/Luotee/dualsense-mac-mapper/releases/tag/v0.2.0
+[1.0.0]: https://github.com/Luotee/dualsense-mac-mapper/releases/tag/v1.0.0
 
 ## [0.1.1] - 2026-05-16
 
