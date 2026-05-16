@@ -120,11 +120,15 @@ pub fn run(cfg: Config, opts: RunOptions) -> Result<()> {
         .manage(handle_for_state)
         .manage(opts.config_path.clone())
         .on_window_event(|window, event| {
-            // Spec §10: clicking ✕ hides the window; mapper keeps running.
-            // Tray "Quit" (Task 8) is the only way to exit the process.
-            if let tauri::WindowEvent::CloseRequested { api, .. } = event {
-                let _ = window.hide();
-                api.prevent_close();
+            // Clicking ✕ now fully exits the process (Windows convention).
+            // `app.exit(0)` ends the Tauri event loop; `runtime::run`
+            // falls through to `engine.shutdown()` so held keys release
+            // before the process dies (Iron rule #3). Users who want
+            // background mapping while the window is hidden should
+            // minimise to the taskbar instead, or use the tray's Open
+            // entry to re-show the window after this exits.
+            if let tauri::WindowEvent::CloseRequested { .. } = event {
+                window.app_handle().exit(0);
             }
         })
         .run(tauri::generate_context!());

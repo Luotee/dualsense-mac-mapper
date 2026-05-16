@@ -3,6 +3,23 @@
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/);
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.3] - 2026-05-16
+
+### Changed
+
+- **Closing the window (✕) now fully exits the process.** v1.0.0–v1.0.2
+  followed the original spec §10 design where ✕ hid the window and the
+  mapper kept running in the tray; users reported the process
+  lingering in Task Manager and hitting unexpected behaviour because
+  Windows convention is "✕ closes the app." The window close handler
+  now calls `app.exit(0)` directly — `engine.shutdown()` still runs on
+  the way out, so held keys release cleanly (Iron rule #3). The tray's
+  `Quit` entry is unchanged; it becomes a convenience duplicate of ✕
+  rather than the only exit path. Users who want background mapping
+  while the window is hidden should minimise to the taskbar instead.
+
+[1.0.3]: https://github.com/Luotee/dualsense-mac-mapper/releases/tag/v1.0.3
+
 ## [1.0.2] - 2026-05-16
 
 ### Fixed
