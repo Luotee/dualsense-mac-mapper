@@ -75,9 +75,9 @@ export function open(options) {
 
       const updateDisplay = () => {
         if (capturedKey) {
-          box.innerHTML = `Current: <code>${escape(capturedKey)}</code><br><span class="hint">Press another key to overwrite. Esc cancels.</span>`;
+          box.innerHTML = `Current: <code>${escape(capturedKey)}</code><br><span class="hint">Press another key to overwrite.</span>`;
         } else {
-          box.innerHTML = `<strong>Press a key to bind…</strong><br><span class="hint">Esc cancels.</span>`;
+          box.innerHTML = `<strong>Press a key to bind…</strong>`;
         }
       };
       updateDisplay();
