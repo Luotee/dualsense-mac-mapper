@@ -391,3 +391,36 @@ pub fn set_capture_active(
     engine.set_capture_active(active);
     Ok(())
 }
+
+// ─── UiPrefs ──────────────────────────────────────────────────────────────────
+
+/// Tauri command: load UI preferences from disk (drawer state, last tab, etc.).
+///
+/// Returns default prefs if the file is missing or corrupt — never an error.
+/// Spec §11: ui-prefs live at `<exe-dir>/dualsense-mapper.ui.json`.
+#[cfg(feature = "gui")]
+#[tauri::command]
+pub fn get_ui_prefs(
+    config_path: State<'_, PathBuf>,
+) -> Result<crate::gui::ui_prefs::UiPrefs, String> {
+    Ok(crate::gui::ui_prefs::load(
+        &crate::gui::ui_prefs::path_beside(&config_path),
+    ))
+}
+
+/// Tauri command: persist UI preferences to disk.
+///
+/// Called only on drawer toggle (~once per minute at most); synchronous write
+/// is fine. Errors are surfaced as IPC error strings but the UI continues.
+#[cfg(feature = "gui")]
+#[tauri::command]
+pub fn set_ui_prefs(
+    config_path: State<'_, PathBuf>,
+    prefs: crate::gui::ui_prefs::UiPrefs,
+) -> Result<(), String> {
+    crate::gui::ui_prefs::save(
+        &crate::gui::ui_prefs::path_beside(&config_path),
+        &prefs,
+    )
+    .map_err(|e| format!("{e:#}"))
+}

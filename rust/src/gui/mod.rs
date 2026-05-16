@@ -28,4 +28,7 @@ pub mod runtime;
 pub mod tray;
 
 #[cfg(feature = "gui")]
+pub mod ui_prefs;
+
+#[cfg(feature = "gui")]
 pub use runtime::{run, RunOptions};
