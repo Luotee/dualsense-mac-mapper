@@ -13,10 +13,12 @@
       "Examples: \"x\", \"X\", \"a\", \"0\", \"9\". Case does not matter."
     ],
     "modifiers":   ["Shift", "Control", "Ctrl", "Alt", "Meta", "Win", "Cmd"],
+    "modifiers_lr": ["LShift", "RShift", "LControl", "LCtrl", "RControl", "RCtrl", "LAlt", "RAlt"],
     "arrows":      ["Up", "Down", "Left", "Right"],
     "edit_keys":   ["Space", "Enter", "Return", "Tab", "Escape", "Esc", "Backspace", "Delete", "Del"],
     "navigation":  ["Home", "End", "PageUp", "PageDown"],
     "function":    ["F1", "F2", "F3", "F4", "F5", "F6", "F7", "F8", "F9", "F10", "F11", "F12"],
+    "punctuation": ["-", "=", "[", "]", "\\", ";", "'", ",", ".", "/", "`"],
     "note": "Unknown key names fail loudly at startup — the validator names the bad binding."
   },
 
