@@ -23,7 +23,7 @@
       "url": "index.html"
     }],
     "security": {
-      "csp": "default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self'; img-src 'self' data:"
+      "csp": "default-src 'self' ipc: http://ipc.localhost; connect-src 'self' ipc: http://ipc.localhost; style-src 'self' 'unsafe-inline'; script-src 'self'; img-src 'self' data:"
     },
     "trayIcon": {
       "iconPath": "icons/tray-disconnected.ico",
