@@ -74,9 +74,11 @@ fn main() -> Result<()> {
 
 fn resolve_config_path(explicit: Option<&std::path::Path>) -> Result<PathBuf> {
     if let Some(p) = explicit { return Ok(p.to_path_buf()); }
-    let base = dirs::config_dir()
-        .context("could not determine user config directory")?;
-    Ok(base.join("dualsense-mapper").join("config.json"))
+    // Portable layout: config sits next to the executable as dualsense-mapper.json.
+    // Drop the folder, move it elsewhere, the config follows.
+    let exe = std::env::current_exe().context("could not determine executable path")?;
+    let dir = exe.parent().context("executable has no parent directory")?;
+    Ok(dir.join("dualsense-mapper.json"))
 }
 
 fn first_run_copy(target: &std::path::Path) -> Result<()> {

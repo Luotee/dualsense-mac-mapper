@@ -9,11 +9,13 @@ Phase 1: Windows build. macOS support comes in Phase 2.
 ## Quick start
 
 1. Plug in a DualSense controller (USB).
-2. Run `dualsense-mapper.exe`. First run writes a default `config.json` to
-   `%APPDATA%\dualsense-mapper\config.json` and exits.
-3. Edit `config.json` — keep all 25 button ids; change `type` / `value` to your taste.
-4. Run again. Press buttons; the mapped keys are sent to the focused window.
-5. Ctrl-C to quit. Every held key is released on exit, on panic, and on disconnect.
+2. Drop `dualsense-mapper.exe` anywhere you have write access (e.g. `C:\dualsense-mapper\` or `Downloads\dualsense-mapper\`).
+3. Run `dualsense-mapper.exe`. The config lives **next to the exe** as `dualsense-mapper.json`. If it's missing on first run, the exe writes a default copy and exits so you can review it.
+4. Edit `dualsense-mapper.json` — keep all 25 button ids; change `type` / `value` to your taste.
+5. Run again. Press buttons; the mapped keys are sent to the focused window.
+6. Ctrl-C to quit. Every held key is released on exit, on panic, and on disconnect.
+
+The folder is portable: copy `dualsense-mapper.exe` + `dualsense-mapper.json` to a USB stick, plug it into another Windows machine, run from there.
 
 ## CLI
 
