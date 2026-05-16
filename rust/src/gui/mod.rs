@@ -6,10 +6,16 @@
 //!
 //! All Tauri code is gated behind the `gui` cargo feature. To build
 //! a binary with the GUI, pass `--features gui` to cargo.
+//!
+//! `commands` is always compiled so integration tests can call `*_impl`
+//! helpers without enabling the full Tauri build. The `#[tauri::command]`
+//! wrappers inside are individually gated on `cfg(feature = "gui")`.
 
 pub mod file_watcher;
 
-#[cfg(feature = "gui")]
+// `commands` is always public — the `*_impl` helpers are Tauri-free and
+// used by integration tests. The `#[tauri::command]` wrappers inside are
+// each gated on `cfg(feature = "gui")`.
 pub mod commands;
 
 #[cfg(feature = "gui")]
