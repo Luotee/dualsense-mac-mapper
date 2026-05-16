@@ -3,6 +3,50 @@
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/);
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.2] - 2026-05-16
+
+### Fixed
+
+- **GUI press-ring lights up for stick directions and analog triggers.**
+  In v1.0.0 / v1.0.1, pushing the L-stick / R-stick past the deadzone
+  (ids 15–22) and pulling L2 / R2 past the trigger threshold (ids
+  23–24) correctly synthesised the bound keystroke, but the SVG hit
+  zone on the controller never highlighted. Root cause: those virtual
+  presses were happening inside `Mapper::transition_virtual`, while the
+  Engine-to-GUI event bridge only forwarded real gilrs `ButtonPressed`
+  events. The mapper now buffers each virtual flip and the engine
+  drains it via `Mapper::take_visual_transitions`, re-emitting
+  `EngineEvent::ButtonDown` / `ButtonUp` so the existing frontend
+  press-ring path lights up exactly the same way it does for physical
+  face buttons.
+- **D-pad and stick wedges now tint with their binding colour.** The
+  triangular hit zones that overlay the d-pad cross and stick wells
+  carried a `hit-invisible` class so the sprite beneath stayed
+  readable, but that hid the binding state entirely. They now carry
+  the `binding-key` / `binding-macro` class with a `fill-opacity: 0.4`
+  modifier so a bound direction tints visibly while still letting the
+  cross / well sprite read through. Unbound wedges stay fully
+  transparent — same as v1.0.0.
+- **Bind popup key capture stays active after the first keystroke.**
+  Previously each capture required clicking the capture box, pressing
+  one key, then clicking again to change it. The capture box now
+  auto-focuses when the Key segment opens, the listener stays attached,
+  and each subsequent keypress overwrites the captured value in place.
+  Escape still cancels via the popup-root handler.
+
+### Changed
+
+- **Default `config.example.json` ships a MapleStory-friendly profile.**
+  Cross → `Alt`, Circle → `z`, Square → `Shift`, Triangle → `a`,
+  R2 → `Shift`, PS → `Space`, Options → `Enter`, D-pad and L-stick
+  → arrow keys, R-stick / L1 / R1 / L2 / L3 / R3 / Share unbound by
+  default. The sample `macro_A` definition stays in the `macros`
+  section so users can see the macro schema even though it isn't
+  bound out of the box. `examples/maple_artale.json` is kept in sync
+  with the default for parity.
+
+[1.0.2]: https://github.com/Luotee/dualsense-mac-mapper/releases/tag/v1.0.2
+
 ## [1.0.1] - 2026-05-16
 
 Cosmetic patch on top of v1.0.0. No code or behaviour change.
