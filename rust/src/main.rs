@@ -35,6 +35,10 @@ struct Cli {
     /// Do not pause for "Press Enter to close" on error (CLI scripts / CI).
     #[arg(long, action = ArgAction::SetTrue)]
     no_pause: bool,
+
+    /// Run in legacy console mode (v0.1.x behaviour). Default is GUI.
+    #[arg(long, action = ArgAction::SetTrue)]
+    cli: bool,
 }
 
 fn main() {
@@ -108,16 +112,38 @@ fn real_main(cli: &Cli) -> Result<()> {
         return Ok(());
     }
 
-    print_banner(&cfg_path, cli.dry_run, just_wrote_default);
-
-    let shutdown = Arc::new(AtomicBool::new(false));
-    {
-        let s = shutdown.clone();
-        ctrlc::set_handler(move || s.store(true, Ordering::SeqCst))
-            .context("installing Ctrl-C handler")?;
+    // --cli: legacy console mode (v0.1.x behaviour). Opt-in from v0.2.0.
+    if cli.cli {
+        print_banner(&cfg_path, cli.dry_run, just_wrote_default);
+        let shutdown = Arc::new(AtomicBool::new(false));
+        {
+            let s = shutdown.clone();
+            ctrlc::set_handler(move || s.store(true, Ordering::SeqCst))
+                .context("installing Ctrl-C handler")?;
+        }
+        return app::run(cfg, app::RunOptions { dry_run: cli.dry_run, shutdown });
     }
 
-    app::run(cfg, app::RunOptions { dry_run: cli.dry_run, shutdown })
+    // Default: GUI mode (v0.2.0+).
+    #[cfg(feature = "gui")]
+    {
+        return dualsense_mapper::gui::run(
+            cfg,
+            dualsense_mapper::gui::RunOptions {
+                config_path: cfg_path,
+                dry_run: cli.dry_run,
+            },
+        );
+    }
+
+    // Reached only when compiled without --features gui.
+    #[cfg(not(feature = "gui"))]
+    {
+        anyhow::bail!(
+            "This binary was built without GUI support. Re-run with --cli, \
+             or rebuild with `cargo build --features gui`."
+        );
+    }
 }
 
 fn print_banner(cfg_path: &std::path::Path, dry_run: bool, just_wrote_default: bool) {
