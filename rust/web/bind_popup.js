@@ -72,29 +72,43 @@ export function open(options) {
       const box = document.createElement('div');
       box.className = 'capture-box';
       box.tabIndex = 0;
-      if (capturedKey) {
-        box.innerHTML = `Current: <code>${escape(capturedKey)}</code><br><span class="hint">Click here and press another key to change.</span>`;
-      } else {
-        box.innerHTML = `<strong>Press the key to bind…</strong>`;
-      }
+
+      const updateDisplay = () => {
+        if (capturedKey) {
+          box.innerHTML = `Current: <code>${escape(capturedKey)}</code><br><span class="hint">Press another key to overwrite. Esc cancels.</span>`;
+        } else {
+          box.innerHTML = `<strong>Press a key to bind…</strong><br><span class="hint">Esc cancels.</span>`;
+        }
+      };
+      updateDisplay();
       editorEl.appendChild(box);
 
-      // Wire up capture
+      // Persistent capture: listener stays attached so the user can keep
+      // pressing keys to overwrite the binding without re-clicking the box.
+      // Each accepted keypress updates the display in place — we no longer
+      // rebuild the editor or blur, so focus is preserved.
+      const onKey = ev => {
+        const r = normaliseKeyEvent(ev);
+        if (r.cancel) {
+          // Let Escape bubble up to the popup-root close handler.
+          return;
+        }
+        ev.preventDefault();
+        ev.stopPropagation();
+        if (r.reject) { show(r.reject); return; }
+        hideError();
+        capturedKey = r.name;
+        updateDisplay();
+      };
+      box.addEventListener('keydown', onKey);
       box.addEventListener('focus', () => {
         invoke('set_capture_active', { active: true }).catch(() => {});
-        const onKey = ev => {
-          const r = normaliseKeyEvent(ev);
-          if (r.cancel) { box.blur(); return; }
-          if (r.reject) { show(r.reject); return; }
-          capturedKey = r.name;
-          renderEditor();
-          box.blur();
-        };
-        box.addEventListener('keydown', onKey, { once: true });
-        box.addEventListener('blur', () => {
-          invoke('set_capture_active', { active: false }).catch(() => {});
-        }, { once: true });
       });
+      box.addEventListener('blur', () => {
+        invoke('set_capture_active', { active: false }).catch(() => {});
+      });
+      // Auto-focus so the user doesn't have to click the box first.
+      setTimeout(() => box.focus(), 0);
     }
 
     if (segment === 'macro') {

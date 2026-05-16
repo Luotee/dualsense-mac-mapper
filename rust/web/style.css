@@ -197,6 +197,14 @@ code {
   stroke: none;
 }
 
+/* Wedges over the d-pad cross / stick well sprites. Carry binding-kind
+   class so a bound direction tints visibly, but use fill-opacity so the
+   underlying sprite still reads through. Unbound wedges stay fully
+   transparent. */
+.controller .wedge { fill-opacity: 0.4; stroke: none; }
+.controller .wedge.binding-unbound { fill-opacity: 0; }
+.controller .wedge:hover { fill-opacity: 0.6; }
+
 /* Binding kind colours */
 .controller .binding-key     { fill: var(--accent); }
 .controller .binding-macro   { fill: var(--macro); }

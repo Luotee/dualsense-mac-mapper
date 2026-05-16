@@ -185,7 +185,12 @@ export function render(parent, bindings) {
       }
       case 'dpad_wedge':
       case 'stick_wedge': {
-        shape = mkWedge(ns, e.geo.cx, e.geo.cy, e.geo.dir, 'hit hit-invisible');
+        // Wedges are layered over the cross / well sprite. Carry the
+        // binding kind class so a bound direction tints visibly, but tag
+        // them as `wedge` so the CSS can dial down fill-opacity and let
+        // the sprite show through. `binding-unbound` zeroes opacity, so
+        // unbound wedges stay invisible — same as before.
+        shape = mkWedge(ns, e.geo.cx, e.geo.cy, e.geo.dir, `hit wedge ${cls}`);
         break;
       }
       default:
