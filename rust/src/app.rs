@@ -1,12 +1,8 @@
 use crate::config::Config;
-use crate::gamepad::GamepadSource;
-use crate::keyboard::KeyboardSink;
-use crate::macro_engine::MacroEngine;
-use crate::mapper::{KeyAction, Mapper};
+use crate::engine::Engine;
 use crate::safety::{self, SharedKeyState};
 use anyhow::Result;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::mpsc;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -16,59 +12,22 @@ pub struct RunOptions {
 }
 
 pub fn run(cfg: Config, opts: RunOptions) -> Result<()> {
-    let state: SharedKeyState = safety::shared();
-    let tick_jitter = cfg.tick_jitter_ms;
-    let min_press = cfg.min_press_ms;
-    install_panic_hook(state.clone());
+    // Install the panic hook before spawning the engine so that if the engine
+    // thread panics, held keys are released via a best-effort fresh Enigo
+    // instance. Engine::spawn already guarantees KeyboardSink::Drop runs on the
+    // normal shutdown path (Iron Rule #3); the panic hook is the last-line
+    // defence for the abnormal path.
+    let state = safety::shared();
+    install_panic_hook(state);
 
-    let mut mapper = Mapper::new(cfg);
-    let mut source = GamepadSource::new()?;
-    let mut sink = KeyboardSink::new(state.clone(), tick_jitter, min_press, opts.dry_run)?;
-
-    let (tx, rx) = mpsc::channel::<KeyAction>();
-    let mut macros = MacroEngine::new(tx.clone());
-
-    let mut gp_events = Vec::with_capacity(32);
+    let engine = Engine::spawn(cfg, opts.dry_run)?;
     while !opts.shutdown.load(Ordering::SeqCst) {
-        gp_events.clear();
-        source.poll(&mut gp_events);
-        for ev in gp_events.drain(..) {
-            for action in mapper.handle(ev) {
-                execute(&action, &mut sink, &mut macros, mapper.config())?;
-            }
-        }
-        // Drain macro-emitted actions until the channel is momentarily empty.
-        while let Ok(action) = rx.try_recv() {
-            execute(&action, &mut sink, &mut macros, mapper.config())?;
-        }
-        std::thread::sleep(Duration::from_millis(8));
+        std::thread::sleep(Duration::from_millis(50));
     }
-
-    macros.stop_all();
-    // Sink's Drop releases anything still held.
-    Ok(())
-}
-
-fn execute(
-    action: &KeyAction,
-    sink: &mut KeyboardSink,
-    macros: &mut MacroEngine,
-    cfg: &Config,
-) -> Result<()> {
-    match action {
-        KeyAction::Press(k)   => sink.press(k)?,
-        KeyAction::Release(k) => sink.release(k)?,
-        KeyAction::MacroStart { name, source_id } => {
-            if let Some(def) = cfg.macros.get(name) {
-                macros.start(*source_id, def.clone());
-            } else {
-                tracing::error!(name = %name, "macro not found in config");
-            }
-        }
-        KeyAction::MacroStop { source_id } => {
-            macros.stop(*source_id);
-        }
-    }
+    // shutdown() signals the engine thread and joins it; the engine thread's
+    // graceful-shutdown path drains macros and then drops KeyboardSink, which
+    // calls release_all_held() — Iron Rule #3 guaranteed.
+    engine.shutdown();
     Ok(())
 }
 
