@@ -20,15 +20,25 @@ document.getElementById('btn-settings').addEventListener('click', () => activate
 
 const statusEl   = document.querySelector('.status');
 const statusText = document.getElementById('status-text');
-await listen('controller-status', s => {
-  if (s.connected) {
+function setStatus(connected, name, transport) {
+  if (connected) {
     statusEl.classList.add('connected');
-    statusText.textContent = `Connected · ${s.name}${s.transport ? ' · ' + s.transport : ''}`;
+    statusText.textContent = `Connected · ${name}${transport ? ' · ' + transport : ''}`;
   } else {
     statusEl.classList.remove('connected');
     statusText.textContent = 'Waiting for controller…';
   }
-});
+}
+// Tauri events don't replay — if a pad is already paired before this script
+// runs, the engine's initial Connected emit was sent before our listen()
+// registered. Seed from a synchronous query first.
+try {
+  const initial = await invoke('get_controller_status');
+  if (initial) setStatus(true, initial.name, initial.transport);
+} catch (e) {
+  console.warn('get_controller_status failed', e);
+}
+await listen('controller-status', s => setStatus(s.connected, s.name, s.transport));
 
 await mappings.init();
 await macros.init();

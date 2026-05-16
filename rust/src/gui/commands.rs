@@ -392,6 +392,20 @@ pub fn set_capture_active(
     Ok(())
 }
 
+/// Tauri command: return the current controller connection state.
+///
+/// The engine emits `controller-status` events on connect/disconnect, but
+/// Tauri events don't replay missed emissions — a pad already paired before
+/// the frontend's `listen()` registers is invisible to the UI otherwise.
+/// Frontend polls this once on init to seed the status indicator.
+#[cfg(feature = "gui")]
+#[tauri::command]
+pub fn get_controller_status(
+    engine: State<'_, Handle>,
+) -> Result<Option<crate::engine::ControllerStatus>, String> {
+    Ok(engine.current_status())
+}
+
 // ─── UiPrefs ──────────────────────────────────────────────────────────────────
 
 /// Tauri command: load UI preferences from disk (drawer state, last tab, etc.).

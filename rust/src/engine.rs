@@ -34,6 +34,15 @@ pub enum EngineEvent {
     MacroEnd   { ts_ms: u64, name: String, completed: bool },
 }
 
+/// Snapshot of the controller's current connection state. Polled by the GUI
+/// on first load (since Tauri events don't replay missed emissions) and
+/// mutated by the run loop on every Connected/Disconnected.
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct ControllerStatus {
+    pub name: String,
+    pub transport: String,
+}
+
 // ─── ConfigWriteGuard — bumps generation on drop ─────────────────────────────
 
 /// An RAII wrapper around `RwLockWriteGuard<Config>` that increments
@@ -72,6 +81,11 @@ struct HandleInner {
     event_tx: Sender<EngineEvent>,
     event_rx: Receiver<EngineEvent>,
     key_state: SharedKeyState,
+    /// Current controller connection state. Set/cleared by the run loop on
+    /// every Connected/Disconnected event. Exposed via `Handle::current_status`
+    /// so the frontend can synchronously query "is a controller already
+    /// connected?" on init without waiting to miss a startup-race event.
+    current_status: RwLock<Option<ControllerStatus>>,
     /// Test-only: sender for the fake gamepad source. `None` in production.
     #[doc(hidden)]
     fake_tx: Mutex<Option<crossbeam_channel::Sender<crate::gamepad::GamepadEvent>>>,
@@ -107,6 +121,13 @@ impl Handle {
             guard: self.inner.config.write().unwrap(),
             generation: &self.inner.config_generation,
         }
+    }
+
+    /// Current controller connection state — `Some` if a gamepad is plugged in
+    /// (or was at startup), `None` otherwise. Frontend uses this on first load
+    /// to avoid the Tauri-event startup race (events don't replay).
+    pub fn current_status(&self) -> Option<ControllerStatus> {
+        self.inner.current_status.read().unwrap().clone()
     }
 
     pub fn drain_events(&self) -> Vec<EngineEvent> {
@@ -191,6 +212,7 @@ impl Engine {
             event_rx,
             key_state: key_state.clone(),
             fake_tx: Mutex::new(None),
+            current_status: RwLock::new(None),
         });
 
         let handle = Handle { inner: inner.clone() };
@@ -275,12 +297,18 @@ fn run_loop(h: Arc<HandleInner>, mut source: GamepadSource, dry_run: bool) -> Re
                         let _ = h.event_tx.send(EngineEvent::ButtonUp { id: *id });
                     }
                     crate::gamepad::GamepadEvent::Connected => {
-                        let _ = h.event_tx.send(EngineEvent::ControllerConnected {
+                        let status = ControllerStatus {
                             name: "DualSense".to_string(),
                             transport: "USB/BT".to_string(),
+                        };
+                        *h.current_status.write().unwrap() = Some(status.clone());
+                        let _ = h.event_tx.send(EngineEvent::ControllerConnected {
+                            name: status.name,
+                            transport: status.transport,
                         });
                     }
                     crate::gamepad::GamepadEvent::Disconnected => {
+                        *h.current_status.write().unwrap() = None;
                         let _ = h.event_tx.send(EngineEvent::ControllerDisconnected);
                     }
                     _ => {}
