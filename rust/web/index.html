@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>DualSense Mapper</title>
+  <link rel="stylesheet" href="./solarized.css">
+  <link rel="stylesheet" href="./style.css">
+</head>
+<body>
+  <div class="app">
+    <div class="toolbar">
+      <div class="status">
+        <span class="dot">●</span>
+        <span id="status-text">Waiting for controller…</span>
+      </div>
+      <div class="tools">
+        <button class="icon-btn" id="btn-activity" title="Activity log">📊</button>
+        <button class="icon-btn" id="btn-settings" title="Settings">⚙</button>
+      </div>
+    </div>
+    <div class="tabs">
+      <div class="tab active" data-tab="mappings">Mappings</div>
+      <div class="tab"          data-tab="macros">Macros</div>
+      <div class="tab"          data-tab="settings">Settings</div>
+    </div>
+    <div class="tab-content">
+      <div class="pane active" id="pane-mappings">
+        <div class="mappings-layout">
+          <div id="controller-host"></div>
+          <div id="chip-list" class="chip-list"></div>
+        </div>
+      </div>
+      <div class="pane" id="pane-macros"></div>
+      <div class="pane" id="pane-settings"></div>
+    </div>
+  </div>
+  <aside id="activity-drawer" class="drawer">
+    <div class="drawer-head">
+      <strong>Activity</strong>
+      <button class="icon-btn" id="btn-activity-close" title="Close">✕</button>
+    </div>
+    <div id="activity-list" class="activity-list"></div>
+  </aside>
+  <script type="module" src="./ipc.js"></script>
+  <script type="module" src="./app.js"></script>
+</body>
+</html>

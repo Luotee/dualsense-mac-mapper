@@ -2,6 +2,7 @@
 # Never tracked. Implementation lands in code + CHANGELOG, not in spec/plan
 # markdown.
 docs/superpowers/
+.superpowers/
 
 # Rust build output
 **/target/

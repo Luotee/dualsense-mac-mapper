@@ -1,0 +1,138 @@
+//! Tauri runtime entry: window builder + lifecycle. v0.2.0 default mode.
+//!
+//! `run` is the top-level entry point for the GUI binary path.
+//! It starts the engine, builds the Tauri window, then blocks on the
+//! event loop. When the event loop exits (Quit from tray or process kill),
+//! `engine.shutdown()` fires, releasing all held keys (Iron rule #3).
+
+use crate::config::Config;
+use crate::config_io::ConfigDoc;
+use crate::engine::Engine;
+use crate::safety;
+use anyhow::{Context, Result};
+use crossbeam_channel::unbounded;
+use std::path::PathBuf;
+use tauri::{Emitter, Manager};
+
+/// Options forwarded from `main.rs` into the GUI runtime.
+pub struct RunOptions {
+    pub config_path: PathBuf,
+    pub dry_run: bool,
+}
+
+/// Start the engine and enter the Tauri event loop.
+///
+/// This function is **blocking** and only returns when the user quits the
+/// application (via tray "Quit" action, once the tray is wired up in Task 8).
+/// On return — whether clean or via error — `engine.shutdown()` is called so
+/// that `KeyboardSink::drop` and `release_all_held` run (Iron rule #3).
+pub fn run(cfg: Config, opts: RunOptions) -> Result<()> {
+    let engine = Engine::spawn(cfg, opts.dry_run)?;
+    // Bind the engine's key state to the global so the panic hook (installed
+    // in main::real_main) can drain it on panic. Iron Rule #3, GUI path.
+    safety::register_global(engine.handle().key_state());
+    let handle = engine.handle();
+
+    // Clone handle before the `move` setup closure so `.manage(handle_for_state)`
+    // can still be called on the builder after the closure has captured its copy.
+    let handle_for_setup = handle.clone();
+    let handle_for_state = handle.clone();
+    let config_path_for_setup = opts.config_path.clone();
+
+    let result = tauri::Builder::default()
+        .plugin(tauri_plugin_single_instance::init(|app, _argv, _cwd| {
+            // A second instance was launched — focus the existing window instead.
+            if let Some(w) = app.get_webview_window("main") {
+                let _ = w.show();
+                let _ = w.set_focus();
+            }
+        }))
+        .setup(move |app| {
+            // The "main" window is declared in tauri.conf.json's `app.windows[]`
+            // array; Tauri builds it automatically before setup runs. Trying to
+            // also build it here would collide ("a webview with label `main`
+            // already exists" — exactly the panic that bit v0.2.0-rc).
+            //
+            // We just wire the tray + event bridge + file watcher here.
+
+            let tray = crate::gui::tray::build(&app.handle(), handle_for_setup.clone())?;
+            // Store the tray so it persists for the app lifetime and can be
+            // retrieved in Task 25 via `app.state::<TrayIcon<_>>()`.
+            app.manage(tray);
+
+            // Spawn the engine→Tauri event bridge. Runs for the lifetime of
+            // the process; the thread dies when the process exits (Iron rule §11).
+            crate::gui::events::spawn(app.handle().clone(), handle_for_setup.clone());
+
+            // Spec §11.3: watch the config file for external edits (user
+            // opens it in Notepad while the GUI is running). On a debounced
+            // change event reload via ConfigDoc, hot-rebind the live engine,
+            // emit `config-changed` to the frontend; on validation failure
+            // emit `validation-error` so the frontend can show a banner.
+            let (notify_tx, notify_rx) = unbounded::<()>();
+            let watcher = crate::gui::file_watcher::spawn(
+                config_path_for_setup.clone(),
+                notify_tx,
+            )?;
+            app.manage(watcher);
+
+            let app_for_watcher = app.handle().clone();
+            let handle_for_watcher = handle_for_setup.clone();
+            let path_for_watcher = config_path_for_setup.clone();
+            std::thread::spawn(move || {
+                for _ in notify_rx.iter() {
+                    match ConfigDoc::load(&path_for_watcher) {
+                        Ok(doc) => {
+                            *handle_for_watcher.config_write() = doc.typed().clone();
+                            let _ = app_for_watcher.emit(
+                                "config-changed",
+                                serde_json::json!({ "source": "file" }),
+                            );
+                        }
+                        Err(e) => {
+                            let _ = app_for_watcher.emit(
+                                "validation-error",
+                                serde_json::json!({ "message": format!("{e:#}") }),
+                            );
+                        }
+                    }
+                }
+            });
+
+            Ok(())
+        })
+        .invoke_handler(tauri::generate_handler![
+            crate::gui::commands::get_config,
+            crate::gui::commands::set_binding,
+            crate::gui::commands::set_macro,
+            crate::gui::commands::delete_macro,
+            crate::gui::commands::rename_macro,
+            crate::gui::commands::set_settings,
+            crate::gui::commands::reset_settings,
+            crate::gui::commands::pause_mapper,
+            crate::gui::commands::open_config_in_editor,
+            crate::gui::commands::quit,
+            crate::gui::commands::set_capture_active,
+            crate::gui::commands::get_controller_status,
+            crate::gui::commands::get_ui_prefs,
+            crate::gui::commands::set_ui_prefs,
+        ])
+        .manage(handle_for_state)
+        .manage(opts.config_path.clone())
+        .on_window_event(|window, event| {
+            // Spec §10: clicking ✕ hides the window; mapper keeps running.
+            // Tray "Quit" (Task 8) is the only way to exit the process.
+            if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+                let _ = window.hide();
+                api.prevent_close();
+            }
+        })
+        .run(tauri::generate_context!());
+
+    // Iron rule #3: shut down the engine regardless of how the event loop
+    // terminated, so held keys are released before the process dies.
+    engine.shutdown();
+
+    result.context("Tauri event loop terminated unexpectedly")?;
+    Ok(())
+}

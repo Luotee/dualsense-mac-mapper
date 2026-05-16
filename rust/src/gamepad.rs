@@ -75,117 +75,154 @@ pub fn trigger_axis_index(a: Axis) -> Option<u32> {
 /// anything >0.5 or <-0.5 as fully pressed.
 const DPAD_HAT_THRESHOLD: f32 = 0.5;
 
+/// Internal implementation: either a real gilrs backend or a fake channel for tests.
+enum GamepadSourceInner {
+    Real {
+        gilrs: Gilrs,
+        dpad_x_state: i8,
+        dpad_y_state: i8,
+        /// First poll() must emit `Connected` for any pad that was already
+        /// plugged in before we started. gilrs only fires `EventType::Connected`
+        /// for hot-plug, so pre-existing pads (the common Bluetooth case where
+        /// the user re-pairs once and the controller is "always there") would
+        /// otherwise never register in the GUI.
+        initial_scan_done: bool,
+    },
+    /// Test-only variant — inject events without a real controller.
+    #[doc(hidden)]
+    Fake(crossbeam_channel::Receiver<GamepadEvent>),
+}
+
 pub struct GamepadSource {
-    gilrs: Gilrs,
-    /// Last hat state for DPadX axis: -1 (left), 0 (centered), +1 (right).
-    /// Tracked so AxisChanged crossings can synthesise ButtonDown/Up events
-    /// for ids 13/14 — many Windows drivers (XInput, DualSense BT) deliver
-    /// the D-pad as a hat axis instead of discrete DPad{Up,Down,Left,Right}
-    /// button events, so without this synth the whole D-pad goes silent.
-    dpad_x_state: i8,
-    /// Same as `dpad_x_state` but for DPadY: -1 (down), 0, +1 (up).
-    /// gilrs convention is Y-positive = up.
-    dpad_y_state: i8,
+    inner: GamepadSourceInner,
 }
 
 impl GamepadSource {
     pub fn new() -> Result<Self> {
         Ok(Self {
-            gilrs: Gilrs::new().map_err(|e| anyhow::anyhow!("{e}"))?,
-            dpad_x_state: 0,
-            dpad_y_state: 0,
+            inner: GamepadSourceInner::Real {
+                gilrs: Gilrs::new().map_err(|e| anyhow::anyhow!("{e}"))?,
+                dpad_x_state: 0,
+                dpad_y_state: 0,
+                initial_scan_done: false,
+            },
         })
+    }
+
+    /// Construct a fake source driven by a channel. Test-only — not part of the
+    /// public API; use only from `Engine::spawn_with_fake_gamepad`.
+    #[doc(hidden)]
+    pub fn fake(rx: crossbeam_channel::Receiver<GamepadEvent>) -> Self {
+        Self { inner: GamepadSourceInner::Fake(rx) }
     }
 
     /// Drain pending events and translate; non-blocking.
     pub fn poll(&mut self, out: &mut Vec<GamepadEvent>) {
-        while let Some(Event { event, .. }) = self.gilrs.next_event() {
-            tracing::debug!(?event, "gilrs event");
-            match event {
-                EventType::Connected => out.push(GamepadEvent::Connected),
-                EventType::Disconnected => out.push(GamepadEvent::Disconnected),
-                EventType::ButtonPressed(b, _) => {
-                    if let Some(i) = button_index(b) {
-                        tracing::info!(button = ?b, id = i, "ButtonDown");
-                        out.push(GamepadEvent::ButtonDown(i));
-                    } else {
-                        tracing::debug!(button = ?b, "ButtonPressed dropped (no mapping)");
+        match &mut self.inner {
+            GamepadSourceInner::Real { gilrs, dpad_x_state, dpad_y_state, initial_scan_done } => {
+                if !*initial_scan_done {
+                    // Synth a Connected event for any pad already known to gilrs
+                    // at construction time (Bluetooth re-pair case).
+                    for (_id, pad) in gilrs.gamepads() {
+                        tracing::info!(name = %pad.name(), "pre-connected gamepad detected at startup");
+                        out.push(GamepadEvent::Connected);
+                    }
+                    *initial_scan_done = true;
+                }
+                while let Some(Event { event, .. }) = gilrs.next_event() {
+                    tracing::debug!(?event, "gilrs event");
+                    match event {
+                        EventType::Connected => out.push(GamepadEvent::Connected),
+                        EventType::Disconnected => out.push(GamepadEvent::Disconnected),
+                        EventType::ButtonPressed(b, _) => {
+                            if let Some(i) = button_index(b) {
+                                tracing::info!(button = ?b, id = i, "ButtonDown");
+                                out.push(GamepadEvent::ButtonDown(i));
+                            } else {
+                                tracing::debug!(button = ?b, "ButtonPressed dropped (no mapping)");
+                            }
+                        }
+                        EventType::ButtonReleased(b, _) => {
+                            if let Some(i) = button_index(b) {
+                                tracing::info!(button = ?b, id = i, "ButtonUp");
+                                out.push(GamepadEvent::ButtonUp(i));
+                            } else {
+                                tracing::debug!(button = ?b, "ButtonReleased dropped (no mapping)");
+                            }
+                        }
+                        EventType::AxisChanged(axis, value, _) => {
+                            if let Some(i) = stick_axis_index(axis) {
+                                out.push(GamepadEvent::Stick { axis: i, value });
+                            } else if let Some(i) = trigger_axis_index(axis) {
+                                out.push(GamepadEvent::Trigger {
+                                    axis: i,
+                                    value: normalize_trigger(value),
+                                });
+                            } else if axis == Axis::DPadX {
+                                transition_dpad_axis(value, true, dpad_x_state, dpad_y_state, out);
+                            } else if axis == Axis::DPadY {
+                                transition_dpad_axis(value, false, dpad_x_state, dpad_y_state, out);
+                            } else {
+                                tracing::debug!(?axis, value, "AxisChanged dropped (no mapping)");
+                            }
+                        }
+                        _ => {}
                     }
                 }
-                EventType::ButtonReleased(b, _) => {
-                    if let Some(i) = button_index(b) {
-                        tracing::info!(button = ?b, id = i, "ButtonUp");
-                        out.push(GamepadEvent::ButtonUp(i));
-                    } else {
-                        tracing::debug!(button = ?b, "ButtonReleased dropped (no mapping)");
-                    }
+            }
+            GamepadSourceInner::Fake(rx) => {
+                while let Ok(ev) = rx.try_recv() {
+                    out.push(ev);
                 }
-                EventType::AxisChanged(axis, value, _) => {
-                    if let Some(i) = stick_axis_index(axis) {
-                        out.push(GamepadEvent::Stick { axis: i, value });
-                    } else if let Some(i) = trigger_axis_index(axis) {
-                        out.push(GamepadEvent::Trigger {
-                            axis: i,
-                            value: normalize_trigger(value),
-                        });
-                    } else if axis == Axis::DPadX {
-                        self.transition_dpad_axis(value, true, out);
-                    } else if axis == Axis::DPadY {
-                        self.transition_dpad_axis(value, false, out);
-                    } else {
-                        tracing::debug!(?axis, value, "AxisChanged dropped (no mapping)");
-                    }
-                }
-                _ => {}
             }
         }
     }
+}
 
-    /// Convert a DPad axis crossing into discrete ButtonDown/Up events.
-    /// `is_x = true`  → -1 emits id 13 (left), +1 emits id 14 (right).
-    /// `is_x = false` → -1 emits id 12 (down), +1 emits id 11 (up).
-    fn transition_dpad_axis(&mut self, value: f32, is_x: bool, out: &mut Vec<GamepadEvent>) {
-        let new_state: i8 = if value > DPAD_HAT_THRESHOLD {
-            1
-        } else if value < -DPAD_HAT_THRESHOLD {
-            -1
-        } else {
-            0
-        };
-        let (old_state, neg_id, pos_id) = if is_x {
-            (self.dpad_x_state, 13u32, 14u32)
-        } else {
-            (self.dpad_y_state, 12u32, 11u32)
-        };
-        if new_state == old_state {
-            return;
-        }
-        // Release the side we were on.
-        if old_state == -1 {
-            tracing::info!(id = neg_id, axis = if is_x { "DPadX" } else { "DPadY" },
-                "synth ButtonUp from D-pad axis");
-            out.push(GamepadEvent::ButtonUp(neg_id));
-        } else if old_state == 1 {
-            tracing::info!(id = pos_id, axis = if is_x { "DPadX" } else { "DPadY" },
-                "synth ButtonUp from D-pad axis");
-            out.push(GamepadEvent::ButtonUp(pos_id));
-        }
-        // Press the side we're now on.
-        if new_state == -1 {
-            tracing::info!(id = neg_id, axis = if is_x { "DPadX" } else { "DPadY" },
-                "synth ButtonDown from D-pad axis");
-            out.push(GamepadEvent::ButtonDown(neg_id));
-        } else if new_state == 1 {
-            tracing::info!(id = pos_id, axis = if is_x { "DPadX" } else { "DPadY" },
-                "synth ButtonDown from D-pad axis");
-            out.push(GamepadEvent::ButtonDown(pos_id));
-        }
-        if is_x {
-            self.dpad_x_state = new_state;
-        } else {
-            self.dpad_y_state = new_state;
-        }
+/// Convert a DPad axis crossing into discrete ButtonDown/Up events.
+/// `is_x = true`  → -1 emits id 13 (left), +1 emits id 14 (right).
+/// `is_x = false` → -1 emits id 12 (down), +1 emits id 11 (up).
+fn transition_dpad_axis(
+    value: f32,
+    is_x: bool,
+    dpad_x_state: &mut i8,
+    dpad_y_state: &mut i8,
+    out: &mut Vec<GamepadEvent>,
+) {
+    let new_state: i8 = if value > DPAD_HAT_THRESHOLD {
+        1
+    } else if value < -DPAD_HAT_THRESHOLD {
+        -1
+    } else {
+        0
+    };
+    let state = if is_x { dpad_x_state } else { dpad_y_state };
+    let old_state = *state;
+    let (neg_id, pos_id) = if is_x { (13u32, 14u32) } else { (12u32, 11u32) };
+    if new_state == old_state {
+        return;
     }
+    // Release the side we were on.
+    if old_state == -1 {
+        tracing::info!(id = neg_id, axis = if is_x { "DPadX" } else { "DPadY" },
+            "synth ButtonUp from D-pad axis");
+        out.push(GamepadEvent::ButtonUp(neg_id));
+    } else if old_state == 1 {
+        tracing::info!(id = pos_id, axis = if is_x { "DPadX" } else { "DPadY" },
+            "synth ButtonUp from D-pad axis");
+        out.push(GamepadEvent::ButtonUp(pos_id));
+    }
+    // Press the side we're now on.
+    if new_state == -1 {
+        tracing::info!(id = neg_id, axis = if is_x { "DPadX" } else { "DPadY" },
+            "synth ButtonDown from D-pad axis");
+        out.push(GamepadEvent::ButtonDown(neg_id));
+    } else if new_state == 1 {
+        tracing::info!(id = pos_id, axis = if is_x { "DPadX" } else { "DPadY" },
+            "synth ButtonDown from D-pad axis");
+        out.push(GamepadEvent::ButtonDown(pos_id));
+    }
+    *state = new_state;
 }
 
 #[cfg(test)]

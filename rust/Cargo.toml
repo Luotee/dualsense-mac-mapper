@@ -1,6 +1,6 @@
 [package]
 name = "dualsense-mapper"
-version = "0.1.1"
+version = "1.0.0"
 edition = "2021"
 rust-version = "1.75"
 description = "Map PS5 DualSense buttons and analog inputs to keyboard keys."
@@ -26,11 +26,26 @@ tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
 fastrand = "2"
 anyhow = "1"
 thiserror = "1"
+crossbeam-channel = "0.5"
+notify = { version = "6", default-features = false, features = ["macos_kqueue"] }
+tauri = { version = "2", features = ["tray-icon", "image-ico", "devtools"], optional = true }
+tauri-plugin-single-instance = { version = "2", optional = true }
+
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.59", features = ["Win32_System_Console", "Win32_UI_WindowsAndMessaging", "Win32_Foundation"] }
 
 [features]
 default = []
+gui = ["dep:tauri", "dep:tauri-plugin-single-instance", "dep:tauri-build"]
 tray = []
 hot_reload = []
+test-utils = []
+
+[build-dependencies]
+tauri-build = { version = "2", features = [], optional = true }
+
+[dev-dependencies]
+tempfile = "3"
 
 [profile.release]
 lto = true

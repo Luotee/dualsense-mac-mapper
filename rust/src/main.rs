@@ -1,8 +1,16 @@
+// In release builds on Windows, link as a GUI subsystem app so double-click
+// doesn't open a console window. Debug builds keep the console subsystem
+// for `cargo run` ergonomics. CLI subcommands (`--cli`, `--validate`,
+// `--list-buttons`) re-attach the parent console at runtime so prints
+// still appear when launched from cmd.exe — see `attach_parent_console`.
+#![cfg_attr(all(windows, not(debug_assertions)), windows_subsystem = "windows")]
+
 use anyhow::{Context, Result};
 use clap::{ArgAction, Parser};
 use dualsense_mapper::app;
 use dualsense_mapper::config::Config;
 use dualsense_mapper::gamepad::{GamepadEvent, GamepadSource};
+use dualsense_mapper::safety;
 use std::io::Write;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -35,9 +43,19 @@ struct Cli {
     /// Do not pause for "Press Enter to close" on error (CLI scripts / CI).
     #[arg(long, action = ArgAction::SetTrue)]
     no_pause: bool,
+
+    /// Run in legacy console mode (v0.1.x behaviour). Default is GUI.
+    #[arg(long, action = ArgAction::SetTrue)]
+    cli: bool,
 }
 
 fn main() {
+    // Always try to attach to the parent process's console. From cmd.exe
+    // this gives us working stdout/stderr; from a double-click there is
+    // no parent console and the call fails silently. Either way the GUI
+    // subsystem release build never spawns a new black window.
+    attach_parent_console();
+
     // We parse once up-front to know whether to pause on error. If parsing
     // itself fails, clap prints its own message and exits cleanly — pause
     // afterward so a double-click user can read what was wrong.
@@ -65,15 +83,58 @@ fn main() {
     };
 
     if let Err(e) = real_main(&cli) {
+        let msg = format!("{e:#}");
         eprintln!();
-        eprintln!("Error: {e:#}");
+        eprintln!("Error: {msg}");
         eprintln!();
-        if !cli.no_pause {
+        // GUI path on Windows: if the error happened before a window
+        // existed (config parse, first-run write, etc.), stderr goes
+        // nowhere on a double-click. Pop a MessageBox so the user sees
+        // *something*. CLI mode still uses the stdin pause.
+        if !cli.cli && !cli.validate && !cli.list_buttons {
+            show_fatal_dialog(&msg);
+        } else if !cli.no_pause {
             pause_on_error();
         }
         std::process::exit(1);
     }
 }
+
+#[cfg(windows)]
+fn attach_parent_console() {
+    use windows_sys::Win32::System::Console::{AttachConsole, ATTACH_PARENT_PROCESS};
+    // SAFETY: AttachConsole is safe to call from any thread; if the
+    // process has no parent console it returns 0 and we ignore that.
+    unsafe {
+        AttachConsole(ATTACH_PARENT_PROCESS);
+    }
+}
+
+#[cfg(not(windows))]
+fn attach_parent_console() {}
+
+#[cfg(windows)]
+fn show_fatal_dialog(msg: &str) {
+    use std::iter::once;
+    use windows_sys::Win32::UI::WindowsAndMessaging::{MessageBoxW, MB_ICONERROR, MB_OK};
+    let body: Vec<u16> = msg.encode_utf16().chain(once(0)).collect();
+    let title: Vec<u16> = "DualSense Mapper — Error"
+        .encode_utf16()
+        .chain(once(0))
+        .collect();
+    // SAFETY: pointers point into Vec<u16> that lives for the call.
+    unsafe {
+        MessageBoxW(
+            std::ptr::null_mut(),
+            body.as_ptr(),
+            title.as_ptr(),
+            MB_ICONERROR | MB_OK,
+        );
+    }
+}
+
+#[cfg(not(windows))]
+fn show_fatal_dialog(_msg: &str) {}
 
 fn real_main(cli: &Cli) -> Result<()> {
     let filter = if cli.verbose {
@@ -82,6 +143,18 @@ fn real_main(cli: &Cli) -> Result<()> {
         EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info"))
     };
     tracing_subscriber::fmt().with_env_filter(filter).init();
+
+    // Iron rule #3: panic on any thread must release held keys at the OS level.
+    // Installed here — before CLI or GUI dispatch — so both paths are covered
+    // from a single site. The Drop on KeyboardSink covers the normal shutdown
+    // path; this hook covers the abnormal (panic) path.
+    let panic_default = std::panic::take_hook();
+    std::panic::set_hook(Box::new(move |info| {
+        if let Err(e) = safety::emergency_release_all() {
+            eprintln!("emergency key release failed: {e:#}");
+        }
+        panic_default(info);
+    }));
 
     let cfg_path = resolve_config_path(cli.config.as_deref())?;
 
@@ -108,16 +181,38 @@ fn real_main(cli: &Cli) -> Result<()> {
         return Ok(());
     }
 
-    print_banner(&cfg_path, cli.dry_run, just_wrote_default);
-
-    let shutdown = Arc::new(AtomicBool::new(false));
-    {
-        let s = shutdown.clone();
-        ctrlc::set_handler(move || s.store(true, Ordering::SeqCst))
-            .context("installing Ctrl-C handler")?;
+    // --cli: legacy console mode (v0.1.x behaviour). Opt-in from v0.2.0.
+    if cli.cli {
+        print_banner(&cfg_path, cli.dry_run, just_wrote_default);
+        let shutdown = Arc::new(AtomicBool::new(false));
+        {
+            let s = shutdown.clone();
+            ctrlc::set_handler(move || s.store(true, Ordering::SeqCst))
+                .context("installing Ctrl-C handler")?;
+        }
+        return app::run(cfg, app::RunOptions { dry_run: cli.dry_run, shutdown });
     }
 
-    app::run(cfg, app::RunOptions { dry_run: cli.dry_run, shutdown })
+    // Default: GUI mode (v0.2.0+).
+    #[cfg(feature = "gui")]
+    {
+        return dualsense_mapper::gui::run(
+            cfg,
+            dualsense_mapper::gui::RunOptions {
+                config_path: cfg_path,
+                dry_run: cli.dry_run,
+            },
+        );
+    }
+
+    // Reached only when compiled without --features gui.
+    #[cfg(not(feature = "gui"))]
+    {
+        anyhow::bail!(
+            "This binary was built without GUI support. Re-run with --cli, \
+             or rebuild with `cargo build --features gui`."
+        );
+    }
 }
 
 fn print_banner(cfg_path: &std::path::Path, dry_run: bool, just_wrote_default: bool) {

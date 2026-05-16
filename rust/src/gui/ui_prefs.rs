@@ -1,0 +1,37 @@
+//! UI-only persistence: drawer-open state, last-selected tab, etc.
+//!
+//! Lives at `<exe-dir>/dualsense-mapper.ui.json`, beside the main config.
+//! Out of band from `Config::validate` — corruption / missing file just
+//! resets to defaults. Never blocks the engine or the GUI startup.
+
+use anyhow::Result;
+use serde::{Deserialize, Serialize};
+use std::path::PathBuf;
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct UiPrefs {
+    #[serde(default)]
+    pub drawer_open: bool,
+    #[serde(default)]
+    pub last_tab: Option<String>,
+}
+
+pub fn path_beside(config_path: &std::path::Path) -> PathBuf {
+    // Sit next to the running config. Same directory; different filename.
+    let mut p = config_path.to_path_buf();
+    p.set_file_name("dualsense-mapper.ui.json");
+    p
+}
+
+pub fn load(path: &std::path::Path) -> UiPrefs {
+    std::fs::read_to_string(path)
+        .ok()
+        .and_then(|s| serde_json::from_str(&s).ok())
+        .unwrap_or_default()
+}
+
+pub fn save(path: &std::path::Path, prefs: &UiPrefs) -> Result<()> {
+    let json = serde_json::to_string_pretty(prefs)?;
+    std::fs::write(path, json)?;
+    Ok(())
+}

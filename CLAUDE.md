@@ -102,21 +102,32 @@ regresses real, observed bugs the codebase already fixed once:
    `SendInput` (Windows) / `CGEvent` (macOS) only, via the `enigo`
    crate. Anything else lands us in actual cheat-software territory.
 8. **The exe is double-clicked, not invoked from a terminal.** Primary
-   end-user flow on Windows is Explorer → double-click → console
-   window opens. That means:
-   - First-run path may **not** call `anyhow::bail!` / exit non-zero
-     before reaching the main loop. Doing so closes the console
-     window before the user can read the message.
-   - Any uncaught error from `main` must pause (read stdin) before
-     exit, so the error is visible. `--no-pause` is the explicit
-     opt-out for CLI / CI use.
-   - The startup banner is the user's primary feedback that the
-     program is running. Don't remove it without a replacement.
+   end-user flow on Windows is Explorer → double-click → GUI window
+   opens. That means:
+   - GUI mode (default in v1.0.0+) is the user-facing path. The
+     window must be visible within ~1 second of process start.
+     Errors before window creation must render to a fallback modal
+     (e.g. `MessageBoxW`), not flash and disappear.
+   - `--cli` is the explicit legacy console-mode opt-in. In CLI mode,
+     first-run may **not** call `anyhow::bail!` / exit non-zero
+     before reaching the main loop. Any uncaught error from `main`
+     must pause (read stdin) before exit, so the error is visible.
+     `--no-pause` is the explicit opt-out for CI use.
    - The first-run-written `dualsense-mapper.json` carries an inline
      keyboard cheat sheet in `_help` and `_keyboard_keys` fields so
      a user editing the file in Notepad has the reference inline.
      `serde` ignores unknown fields, so these are documentation
      only — but they are load-bearing UX, not decoration.
+9. **The GUI (`gui/` module + `web/` frontend) is a chrome layer.**
+   No mapping decision, no key synth, no macro scheduling may live
+   in JavaScript. The frontend captures input and renders state;
+   everything that mutates runtime state goes through a Rust
+   `#[tauri::command]` (see `rust/src/gui/commands.rs`) that calls
+   the same engine code paths as the v0.1.x CLI. JS that calls
+   `SendInput` (or the equivalent) is a rejection. The IPC surface
+   is the only authorised path from frontend to engine — adding
+   business logic to the frontend that bypasses it is a regression
+   even if the feature works in isolation.
 
 ## Anti-cheat self-discipline
 

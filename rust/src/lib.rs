@@ -1,5 +1,8 @@
 pub mod config;
+pub mod config_io;
+pub mod engine;
 pub mod gamepad;
+pub mod gui;
 pub mod keyboard;
 pub mod macro_engine;
 pub mod mapper;
