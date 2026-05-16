@@ -1,0 +1,35 @@
+{
+  "$schema": "https://schema.tauri.app/config/2.0.0",
+  "productName": "DualSense Mapper",
+  "version": "0.2.0",
+  "identifier": "com.luotee.dualsense-mapper",
+  "build": {
+    "frontendDist": "./web"
+  },
+  "app": {
+    "windows": [{
+      "title": "DualSense Mapper",
+      "width": 980,
+      "height": 640,
+      "minWidth": 880,
+      "minHeight": 560,
+      "resizable": true,
+      "fullscreen": false,
+      "decorations": true,
+      "transparent": false,
+      "visible": false
+    }],
+    "security": {
+      "csp": "default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self'; img-src 'self' data:"
+    },
+    "trayIcon": {
+      "iconPath": "icons/tray-disconnected.ico",
+      "id": "main-tray"
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": ["nsis"],
+    "icon": ["icons/icon.ico"]
+  }
+}

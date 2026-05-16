@@ -28,12 +28,18 @@ anyhow = "1"
 thiserror = "1"
 crossbeam-channel = "0.5"
 notify = { version = "6", default-features = false, features = ["macos_kqueue"] }
+tauri = { version = "2", features = ["tray-icon"], optional = true }
+tauri-plugin-single-instance = { version = "2", optional = true }
 
 [features]
 default = []
+gui = ["dep:tauri", "dep:tauri-plugin-single-instance", "dep:tauri-build"]
 tray = []
 hot_reload = []
 test-utils = []
+
+[build-dependencies]
+tauri-build = { version = "2", features = [], optional = true }
 
 [dev-dependencies]
 tempfile = "3"
