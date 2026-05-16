@@ -7,11 +7,10 @@ fn shipped_example_config_validates() {
     let cfg = Config::load_from_path(&path).expect("load+validate");
     assert_eq!(cfg.version, 1);
     assert_eq!(cfg.buttons.len(), 25);
-    // L2 must be a macro
-    assert!(matches!(
-        cfg.buttons["23"].binding,
-        dualsense_mapper::config::Binding::Macro(_)
-    ));
+    // The shipped default keeps a sample `macro_A` definition in the
+    // `macros` section so users can see the schema even if no button is
+    // bound to it out of the box.
+    assert!(cfg.macros.contains_key("macro_A"));
 }
 
 #[test]
