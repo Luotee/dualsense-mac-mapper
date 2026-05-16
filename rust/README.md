@@ -31,31 +31,31 @@ The config requires every id 0..=24 to be present, even if `"type": "unbound"`. 
 
 | Id | Source | Default label |
 |---:|---|---|
-| 0 | Physical | Cross (X) |
-| 1 | Physical | Circle (O) |
-| 2 | Physical | Square ([]) |
-| 3 | Physical | Triangle (^) |
-| 4 | Physical | Share |
-| 5 | Physical | PS Button |
-| 6 | Physical | Options |
-| 7 | Physical | L3 (stick click) |
-| 8 | Physical | R3 (stick click) |
+| 0 | Physical | Cross（叉叉） |
+| 1 | Physical | Circle（圈圈） |
+| 2 | Physical | Square（正方形） |
+| 3 | Physical | Triangle（三角） |
+| 4 | Physical | Share（拍照鍵） |
+| 5 | Physical | PS 按鈕 |
+| 6 | Physical | Options（Menu 鍵） |
+| 7 | Physical | L3 |
+| 8 | Physical | R3 |
 | 9 | Physical | L1 |
 | 10 | Physical | R1 |
-| 11 | Physical | D-pad Up |
-| 12 | Physical | D-pad Down |
-| 13 | Physical | D-pad Left |
-| 14 | Physical | D-pad Right |
-| 15 | Virtual (L-stick Y ≤ −deadzone) | L-stick Up |
-| 16 | Virtual (L-stick Y ≥ deadzone) | L-stick Down |
-| 17 | Virtual (L-stick X ≤ −deadzone) | L-stick Left |
-| 18 | Virtual (L-stick X ≥ deadzone) | L-stick Right |
-| 19 | Virtual (R-stick Y ≤ −deadzone) | R-stick Up |
-| 20 | Virtual (R-stick Y ≥ deadzone) | R-stick Down |
-| 21 | Virtual (R-stick X ≤ −deadzone) | R-stick Left |
-| 22 | Virtual (R-stick X ≥ deadzone) | R-stick Right |
-| 23 | Virtual (L2 normalized ≥ trigger_threshold) | L2 trigger |
-| 24 | Virtual (R2 normalized ≥ trigger_threshold) | R2 trigger |
+| 11 | Physical | D-pad ↑ |
+| 12 | Physical | D-pad ↓ |
+| 13 | Physical | D-pad ← |
+| 14 | Physical | D-pad → |
+| 15 | Virtual (L-stick Y ≥ deadzone) | L-stick ↑ |
+| 16 | Virtual (L-stick Y ≤ −deadzone) | L-stick ↓ |
+| 17 | Virtual (L-stick X ≤ −deadzone) | L-stick ← |
+| 18 | Virtual (L-stick X ≥ deadzone) | L-stick → |
+| 19 | Virtual (R-stick Y ≥ deadzone) | R-stick ↑ |
+| 20 | Virtual (R-stick Y ≤ −deadzone) | R-stick ↓ |
+| 21 | Virtual (R-stick X ≤ −deadzone) | R-stick ← |
+| 22 | Virtual (R-stick X ≥ deadzone) | R-stick → |
+| 23 | Axis (L2 ≥ trigger_threshold) OR Button::LeftTrigger2 | L2（類比板機） |
+| 24 | Axis (R2 ≥ trigger_threshold) OR Button::RightTrigger2 | R2（類比板機） |
 
 ## Anti-cheat self-discipline
 

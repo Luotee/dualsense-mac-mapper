@@ -14,27 +14,40 @@ pub enum GamepadEvent {
 }
 
 pub fn normalize_trigger(raw: f32) -> f32 {
-    // gilrs reports triggers in [-1.0, 1.0] on Windows DualSense; map to [0.0, 1.0]
-    ((raw + 1.0) * 0.5).clamp(0.0, 1.0)
+    // Platform convention differs:
+    //   Linux gilrs: triggers report in [-1.0, 1.0] (idle = -1.0)
+    //   Windows / XInput backend: triggers can report in [0.0, 1.0] (idle = 0.0)
+    // Detect by sign: negative raw means [-1, 1] convention; otherwise pass through.
+    if raw < 0.0 {
+        ((raw + 1.0) * 0.5).clamp(0.0, 1.0)
+    } else {
+        raw.clamp(0.0, 1.0)
+    }
 }
 
 pub fn button_index(b: Button) -> Option<u32> {
     Some(match b {
-        Button::South        => 0,   // Cross
-        Button::East         => 1,   // Circle
-        Button::West         => 2,   // Square
-        Button::North        => 3,   // Triangle
-        Button::Select       => 4,   // Share
-        Button::Mode         => 5,   // PS
-        Button::Start        => 6,   // Options
-        Button::LeftThumb    => 7,   // L3
-        Button::RightThumb   => 8,   // R3
-        Button::LeftTrigger  => 9,   // L1
-        Button::RightTrigger => 10,  // R1
-        Button::DPadUp       => 11,
-        Button::DPadDown     => 12,
-        Button::DPadLeft     => 13,
-        Button::DPadRight    => 14,
+        Button::South         => 0,   // Cross
+        Button::East          => 1,   // Circle
+        Button::West          => 2,   // Square
+        Button::North         => 3,   // Triangle
+        Button::Select        => 4,   // Share
+        Button::Mode          => 5,   // PS
+        Button::Start         => 6,   // Options
+        Button::LeftThumb     => 7,   // L3
+        Button::RightThumb    => 8,   // R3
+        Button::LeftTrigger   => 9,   // L1 (shoulder)
+        Button::RightTrigger  => 10,  // R1 (shoulder)
+        Button::DPadUp        => 11,
+        Button::DPadDown      => 12,
+        Button::DPadLeft      => 13,
+        Button::DPadRight     => 14,
+        // Digital trigger events — some platforms report L2/R2 as both a
+        // digital button (these) AND an analog axis (LeftZ/RightZ). Map them
+        // to the same virtual ids 23/24 so the macro fires regardless of which
+        // path gilrs delivers on the current OS/driver.
+        Button::LeftTrigger2  => 23,
+        Button::RightTrigger2 => 24,
         _ => return None,
     })
 }
@@ -101,10 +114,10 @@ mod tests {
     }
 
     #[test]
-    fn trigger_idle_zero_stays_in_range() {
-        // some platforms report 0.0 for an unpressed trigger
-        let v = normalize_trigger(0.0);
-        assert!(v >= 0.0 && v <= 0.5, "got {v}");
+    fn trigger_idle_zero_stays_zero() {
+        // Windows / XInput convention: unpressed trigger reads 0.0 → must stay 0.0
+        // so it sits below threshold 0.5 (was a bug — previously returned 0.5).
+        assert!((normalize_trigger(0.0) - 0.0).abs() < 1e-6);
     }
 
     #[test]
@@ -113,10 +126,18 @@ mod tests {
     }
 
     #[test]
+    fn trigger_zero_one_convention_pass_through() {
+        // [0, 1] convention: 0.7 stays 0.7, not (0.7+1)/2 = 0.85
+        assert!((normalize_trigger(0.7) - 0.7).abs() < 1e-6);
+    }
+
+    #[test]
     fn button_index_round_trip() {
-        assert_eq!(button_index(Button::South),       Some(0));
-        assert_eq!(button_index(Button::RightTrigger), Some(10));
-        assert_eq!(button_index(Button::DPadRight),    Some(14));
-        assert_eq!(button_index(Button::Unknown),      None);
+        assert_eq!(button_index(Button::South),         Some(0));
+        assert_eq!(button_index(Button::RightTrigger),  Some(10));
+        assert_eq!(button_index(Button::DPadRight),     Some(14));
+        assert_eq!(button_index(Button::LeftTrigger2),  Some(23));
+        assert_eq!(button_index(Button::RightTrigger2), Some(24));
+        assert_eq!(button_index(Button::Unknown),       None);
     }
 }
