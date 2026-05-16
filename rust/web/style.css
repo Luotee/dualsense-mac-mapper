@@ -325,3 +325,44 @@ code {
                       z-index: 200; min-width: 120px; font-size: 12px; }
 .macro-context-item { padding: 6px 14px; cursor: pointer; }
 .macro-context-item:hover { background: var(--soft); color: var(--accent); }
+
+/* Settings tab */
+.settings-form { max-width: 540px; margin: 0 auto; display: flex; flex-direction: column; gap: 20px; }
+.settings-section { display: flex; flex-direction: column; gap: 10px; }
+.settings-section h3 { font-size: 12px; color: var(--text-strong); font-weight: 600;
+                       text-transform: uppercase; letter-spacing: 0.06em; padding-bottom: 6px;
+                       border-bottom: 1px solid var(--border-light); }
+.field { display: flex; justify-content: space-between; align-items: center; gap: 12px;
+         padding: 4px 0; font-size: 12px; }
+.field label { color: var(--text); flex: 1; }
+.field .hint { color: var(--muted); font-size: 11px; }
+.field input[type="number"] { width: 80px; padding: 4px 8px; font-size: 12px;
+                              border: 1px solid var(--border-light); border-radius: 3px;
+                              background: var(--card); color: var(--text); }
+.field.field-toggle input { width: auto; transform: scale(1.2); }
+.dual-range { display: inline-flex; align-items: center; gap: 6px; }
+.dual-range input[type="number"] { width: 64px; }
+.dual-range span { color: var(--muted); font-size: 11px; }
+
+.settings-error { padding: 6px 10px; background: rgba(220,50,47,0.10); color: var(--red);
+                  border-radius: 3px; font-size: 11px; }
+
+.settings-actions { display: flex; gap: 8px; align-items: center; padding-top: 8px;
+                    border-top: 1px solid var(--border-light); }
+.settings-actions .grow { flex: 1; }
+.settings-actions .primary { padding: 6px 18px; font-size: 12px;
+                              background: var(--accent); color: white; border: 1px solid var(--accent);
+                              border-radius: 4px; cursor: pointer; }
+.settings-actions .primary:hover { opacity: 0.92; }
+
+.settings-about { margin-top: 16px; padding: 14px; background: var(--card); border-radius: 4px;
+                  font-size: 11px; color: var(--muted); }
+.settings-about h4 { font-size: 12px; color: var(--text-strong); margin-bottom: 6px; }
+.settings-about a  { color: var(--accent); text-decoration: none; }
+.settings-about a:hover { text-decoration: underline; }
+
+.settings-flash { position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%);
+                  background: var(--accent); color: white; padding: 8px 18px; border-radius: 4px;
+                  font-size: 12px; box-shadow: 0 4px 14px rgba(7,54,66,0.18);
+                  animation: flash-pop var(--transition); }
+@keyframes flash-pop { from { opacity: 0; transform: translate(-50%, 8px); } to { opacity: 1; transform: translate(-50%, 0); } }
