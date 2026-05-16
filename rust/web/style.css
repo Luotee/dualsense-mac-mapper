@@ -157,3 +157,62 @@ code {
   padding: 1px 5px;
   border-radius: 3px;
 }
+
+/* ── Controller diagram (Task 19) ─────────────────────────────────────────── */
+.controller {
+  width: 100%;
+  max-width: 480px;
+  height: auto;
+  display: block;
+  margin: 0 auto;
+}
+
+/* Body + decorative shapes */
+.controller .body       { fill: var(--card); stroke: var(--border); stroke-width: 1.4; }
+.controller .touchpad   { fill: var(--bg); stroke: var(--border); stroke-width: 1; }
+.controller .dpad-arm   { fill: var(--text); }
+.controller .stick-ring { fill: var(--bg); stroke: var(--border); stroke-width: 1.4; }
+
+/* Hit zone base */
+.controller .hit {
+  cursor: pointer;
+  transition: opacity var(--transition);
+  stroke-width: 1;
+  stroke: var(--border);
+}
+.controller .hit:hover { opacity: 0.65; }
+
+/* Transparent hit zones (wedges over sprites) */
+.controller .hit-invisible {
+  fill: transparent;
+  stroke: none;
+}
+
+/* Binding kind colours */
+.controller .binding-key     { fill: var(--accent); }
+.controller .binding-macro   { fill: var(--macro); }
+.controller .binding-unbound { fill: var(--card); stroke: var(--muted); }
+
+/* Live-press overlay: animated yellow ring */
+.controller .press-ring {
+  fill: none;
+  stroke: var(--yellow);
+  stroke-width: 2.5;
+  pointer-events: none;
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: press-pulse 250ms ease-out forwards;
+}
+
+@keyframes press-pulse {
+  from { transform: scale(1);   opacity: 0.8; }
+  to   { transform: scale(1.5); opacity: 0;   }
+}
+
+/* Selection ring: static accent border, no animation */
+.controller .selection-ring {
+  fill: none;
+  stroke: var(--accent);
+  stroke-width: 2.5;
+  pointer-events: none;
+}
