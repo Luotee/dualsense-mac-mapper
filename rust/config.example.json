@@ -50,7 +50,7 @@
     "20": { "label": "R-stick ↓",                "type": "unbound" },
     "21": { "label": "R-stick ←",                "type": "unbound" },
     "22": { "label": "R-stick →",                "type": "unbound" },
-    "23": { "label": "L2（類比板機）觸發巨集",   "type": "macro",   "value": "macro_A" },
+    "23": { "label": "L2（類比板機）",           "type": "macro",   "value": "macro_A" },
     "24": { "label": "R2（類比板機）",           "type": "key",     "value": "a" }
   },
   "macros": {
