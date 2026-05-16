@@ -3,6 +3,20 @@
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/);
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.1] - 2026-05-16
+
+Cosmetic patch on top of v1.0.0. No code or behaviour change.
+
+### Fixed
+
+- Default `dualsense-mapper.json` written on first run: drop the
+  misleading "觸發巨集" suffix from the L2 (id 23) label. The
+  suffix described the default *binding* (a macro) rather than the
+  button itself, so anyone who later remapped L2 saw a stale label.
+  Existing users with their own config are unaffected.
+
+[1.0.1]: https://github.com/Luotee/dualsense-mac-mapper/releases/tag/v1.0.1
+
 ## [1.0.0] - 2026-05-16
 
 First GUI release. Version jumps from `0.1.x` straight to `1.0.0` to
