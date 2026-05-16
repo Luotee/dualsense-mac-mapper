@@ -3,21 +3,31 @@
 //! engine loop tick) and re-emits as Tauri events for the frontend.
 
 use crate::engine::{EngineEvent, Handle};
-use tauri::{AppHandle, Emitter, Runtime};
+use tauri::{AppHandle, Emitter, Manager, Runtime};
+use tauri::tray::TrayIcon;
 
 pub fn spawn<R: Runtime>(app: AppHandle<R>, engine: Handle) {
     std::thread::spawn(move || {
         loop {
             for ev in engine.drain_events() {
                 let _ = match ev {
-                    EngineEvent::ControllerConnected { name, transport } =>
+                    EngineEvent::ControllerConnected { name, transport } => {
+                        // Spec §10: tray icon swaps to "connected" on plug-in.
+                        if let Some(tray) = app.try_state::<TrayIcon<R>>() {
+                            let _ = crate::gui::tray::set_connected(&tray, true);
+                        }
                         app.emit("controller-status", serde_json::json!({
                             "connected": true, "name": name, "transport": transport
-                        })),
-                    EngineEvent::ControllerDisconnected =>
+                        }))
+                    }
+                    EngineEvent::ControllerDisconnected => {
+                        if let Some(tray) = app.try_state::<TrayIcon<R>>() {
+                            let _ = crate::gui::tray::set_connected(&tray, false);
+                        }
                         app.emit("controller-status", serde_json::json!({
                             "connected": false, "name": "", "transport": ""
-                        })),
+                        }))
+                    }
                     EngineEvent::ButtonDown { id } =>
                         app.emit("button-down", serde_json::json!({ "id": id })),
                     EngineEvent::ButtonUp { id } =>
