@@ -18,7 +18,9 @@
       "fullscreen": false,
       "decorations": true,
       "transparent": false,
-      "visible": false
+      "visible": true,
+      "label": "main",
+      "url": "index.html"
     }],
     "security": {
       "csp": "default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self'; img-src 'self' data:"

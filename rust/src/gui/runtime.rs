@@ -12,7 +12,7 @@ use crate::safety;
 use anyhow::{Context, Result};
 use crossbeam_channel::unbounded;
 use std::path::PathBuf;
-use tauri::{Emitter, Manager, WebviewWindowBuilder};
+use tauri::{Emitter, Manager};
 
 /// Options forwarded from `main.rs` into the GUI runtime.
 pub struct RunOptions {
@@ -48,16 +48,12 @@ pub fn run(cfg: Config, opts: RunOptions) -> Result<()> {
             }
         }))
         .setup(move |app| {
-            let _w = WebviewWindowBuilder::new(
-                app,
-                "main",
-                tauri::WebviewUrl::App("index.html".into()),
-            )
-            .title("DualSense Mapper")
-            .inner_size(980.0, 640.0)
-            .min_inner_size(880.0, 560.0)
-            .visible(true)
-            .build()?;
+            // The "main" window is declared in tauri.conf.json's `app.windows[]`
+            // array; Tauri builds it automatically before setup runs. Trying to
+            // also build it here would collide ("a webview with label `main`
+            // already exists" — exactly the panic that bit v0.2.0-rc).
+            //
+            // We just wire the tray + event bridge + file watcher here.
 
             let tray = crate::gui::tray::build(&app.handle(), handle_for_setup.clone())?;
             // Store the tray so it persists for the app lifetime and can be
