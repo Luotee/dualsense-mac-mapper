@@ -27,6 +27,11 @@ pub fn run(cfg: Config, opts: RunOptions) -> Result<()> {
     let engine = Engine::spawn(cfg, opts.dry_run)?;
     let handle = engine.handle();
 
+    // Clone handle before the `move` setup closure so `.manage(handle_for_state)`
+    // can still be called on the builder after the closure has captured its copy.
+    let handle_for_setup = handle.clone();
+    let handle_for_state = handle.clone();
+
     let result = tauri::Builder::default()
         .plugin(tauri_plugin_single_instance::init(|app, _argv, _cwd| {
             // A second instance was launched — focus the existing window instead.
@@ -35,7 +40,7 @@ pub fn run(cfg: Config, opts: RunOptions) -> Result<()> {
                 let _ = w.set_focus();
             }
         }))
-        .setup(|app| {
+        .setup(move |app| {
             let _w = WebviewWindowBuilder::new(
                 app,
                 "main",
@@ -46,9 +51,15 @@ pub fn run(cfg: Config, opts: RunOptions) -> Result<()> {
             .min_inner_size(880.0, 560.0)
             .visible(true)
             .build()?;
+
+            let tray = crate::gui::tray::build(&app.handle(), handle_for_setup.clone())?;
+            // Store the tray so it persists for the app lifetime and can be
+            // retrieved in Task 25 via `app.state::<TrayIcon<_>>()`.
+            app.manage(tray);
+
             Ok(())
         })
-        .manage(handle.clone())
+        .manage(handle_for_state)
         .manage(opts.config_path.clone())
         .on_window_event(|window, event| {
             // Spec §10: clicking ✕ hides the window; mapper keeps running.

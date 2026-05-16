@@ -13,4 +13,7 @@ pub mod file_watcher;
 pub mod runtime;
 
 #[cfg(feature = "gui")]
+pub mod tray;
+
+#[cfg(feature = "gui")]
 pub use runtime::{run, RunOptions};

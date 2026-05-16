@@ -28,7 +28,7 @@ anyhow = "1"
 thiserror = "1"
 crossbeam-channel = "0.5"
 notify = { version = "6", default-features = false, features = ["macos_kqueue"] }
-tauri = { version = "2", features = ["tray-icon"], optional = true }
+tauri = { version = "2", features = ["tray-icon", "image-ico"], optional = true }
 tauri-plugin-single-instance = { version = "2", optional = true }
 
 [features]
