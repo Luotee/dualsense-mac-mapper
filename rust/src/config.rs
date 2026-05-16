@@ -131,36 +131,50 @@ use enigo::Key;
 pub fn parse_key(name: &str) -> Result<Key> {
     if name.chars().count() == 1 {
         let c = name.chars().next().unwrap();
-        // On Windows, route ASCII letters and digits through Key::Other(VK)
-        // so they are injected as real virtual-key events (auto-repeat fires,
-        // games that read virtual-key state can see them). Key::Unicode goes
-        // through KEYEVENTF_UNICODE which inserts a character but does NOT
-        // register as a held key — that's the bug we're fixing here.
+        // On Windows, route ASCII chars through Key::Other(VK) so they
+        // inject as real virtual-key events (auto-repeat fires, games
+        // that read virtual-key state see them). Key::Unicode goes
+        // through KEYEVENTF_UNICODE which inserts a character but does
+        // NOT register as a held key.
         //
-        // Linux keeps Key::Unicode as the simple fallback; the real product
-        // only runs on Windows, this branch exists so cargo test still works
-        // on a Linux dev host.
+        // Linux keeps Key::Unicode as the simple fallback; the real
+        // product only runs on Windows, this branch exists so cargo
+        // test still works on a Linux dev host.
         #[cfg(target_os = "windows")]
         {
             if c.is_ascii_alphabetic() {
-                // VK_A..VK_Z == 0x41..0x5A, same as ASCII upper-case codes
+                // VK_A..VK_Z == 0x41..0x5A, same as ASCII upper-case codes.
                 let vk = c.to_ascii_uppercase() as u32;
                 return Ok(Key::Other(vk));
             }
             if c.is_ascii_digit() {
-                // VK_0..VK_9 == 0x30..0x39, same as ASCII digit codes
+                // VK_0..VK_9 == 0x30..0x39, same as ASCII digit codes.
                 return Ok(Key::Other(c as u32));
             }
-            // Other ASCII printable (`-`, `=`, `,`, `.`, etc.): no clean VK
-            // mapping that's layout-independent, so fall through to Unicode.
+            // OEM punctuation — VK codes assume the US keyboard layout.
+            // Users on other layouts may need to bind by Unicode instead,
+            // but every layout still produces the same scan-code that
+            // these VKs map to in WM_KEYDOWN, so games hooked at the
+            // virtual-key level will see the right key.
+            if let Some(vk) = vk_for_oem_punct(c) {
+                return Ok(Key::Other(vk));
+            }
         }
         return Ok(Key::Unicode(c));
     }
     let lower = name.to_ascii_lowercase();
+    // Left / right modifier specifics are Windows-only — on non-Windows
+    // we fall back to the generic modifier so cargo test still passes.
+    #[cfg(target_os = "windows")]
+    {
+        if let Some(vk) = vk_for_lr_modifier(&lower) {
+            return Ok(Key::Other(vk));
+        }
+    }
     Ok(match lower.as_str() {
-        "shift"   => Key::Shift,
-        "control" | "ctrl" => Key::Control,
-        "alt"     => Key::Alt,
+        "shift"   | "lshift" | "rshift" => Key::Shift,
+        "control" | "ctrl" | "lcontrol" | "lctrl" | "rcontrol" | "rctrl" => Key::Control,
+        "alt"     | "lalt" | "ralt" => Key::Alt,
         "meta" | "win" | "cmd" => Key::Meta,
         "left"    => Key::LeftArrow,
         "right"   => Key::RightArrow,
@@ -186,6 +200,40 @@ pub fn parse_key(name: &str) -> Result<Key> {
             }
         }
         _ => bail!("unknown key name \"{name}\""),
+    })
+}
+
+/// Windows-only: VK codes for the OEM punctuation keys on a US layout.
+/// Reference: <https://learn.microsoft.com/windows/win32/inputdev/virtual-key-codes>
+#[cfg(target_os = "windows")]
+fn vk_for_oem_punct(c: char) -> Option<u32> {
+    Some(match c {
+        '-' => 0xBD, // VK_OEM_MINUS
+        '=' => 0xBB, // VK_OEM_PLUS
+        ',' => 0xBC, // VK_OEM_COMMA
+        '.' => 0xBE, // VK_OEM_PERIOD
+        '/' => 0xBF, // VK_OEM_2  '/'
+        '`' => 0xC0, // VK_OEM_3  '`'
+        '[' => 0xDB, // VK_OEM_4  '['
+        '\\' => 0xDC, // VK_OEM_5 '\'
+        ']' => 0xDD, // VK_OEM_6  ']'
+        '\'' => 0xDE, // VK_OEM_7 "'"
+        ';' => 0xBA, // VK_OEM_1  ';'
+        _ => return None,
+    })
+}
+
+/// Windows-only: VK codes for the left/right-specific modifier keys.
+#[cfg(target_os = "windows")]
+fn vk_for_lr_modifier(lower: &str) -> Option<u32> {
+    Some(match lower {
+        "lshift" => 0xA0,   // VK_LSHIFT
+        "rshift" => 0xA1,   // VK_RSHIFT
+        "lcontrol" | "lctrl" => 0xA2, // VK_LCONTROL
+        "rcontrol" | "rctrl" => 0xA3, // VK_RCONTROL
+        "lalt" => 0xA4,     // VK_LMENU
+        "ralt" => 0xA5,     // VK_RMENU
+        _ => return None,
     })
 }
 
@@ -306,6 +354,21 @@ mod tests {
     fn rejects_unknown_key() {
         let err = parse_key("PotatoButton").unwrap_err().to_string();
         assert!(err.contains("unknown key name"), "got: {err}");
+    }
+
+    #[test]
+    fn parses_punctuation_keys() {
+        for c in ['-', '=', ',', '.', '/', ';', '\'', '\\', '[', ']', '`'] {
+            let name = c.to_string();
+            assert!(parse_key(&name).is_ok(), "parse_key({name:?}) failed");
+        }
+    }
+
+    #[test]
+    fn parses_lr_modifier_keys() {
+        for n in ["LShift", "RShift", "LControl", "LCtrl", "RControl", "RCtrl", "LAlt", "RAlt"] {
+            assert!(parse_key(n).is_ok(), "parse_key({n}) failed");
+        }
     }
 
     #[test]

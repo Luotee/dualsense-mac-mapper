@@ -3,6 +3,36 @@
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/);
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.6] - 2026-05-17
+
+### Added
+
+- **Bind any OEM punctuation key** (`-` `=` `[` `]` `\` `;` `'` `,`
+  `.` `/` backtick). The frontend capture box used to reject anything
+  outside letters / digits / named keys; the backend already
+  routed punctuation through `Key::Unicode`, which on Windows
+  inserts a character but does not register as a held key. The
+  punctuation chars now resolve to the matching `VK_OEM_*` virtual
+  key on Windows (US layout) so games hooked at the virtual-key
+  level see them as real held keys.
+- **Left / right modifier names**: `LShift`, `RShift`, `LControl`
+  (alias `LCtrl`), `RControl` (alias `RCtrl`), `LAlt`, `RAlt`. Bind
+  them by pressing the left or right modifier in the capture box;
+  the frontend distinguishes via `KeyboardEvent.code`. Generic
+  `Shift` / `Control` / `Alt` names still work for binders that
+  don't care about the side.
+
+### Build
+
+- `_keyboard_keys` cheat-sheet in the bundled
+  `dualsense-mapper.json` now lists the new `modifiers_lr` and
+  `punctuation` sections so a user editing the file in Notepad
+  sees the full set of valid names inline.
+- Two new `parse_key` tests cover punctuation round-trip and the
+  six L/R modifier aliases. Test count: 49 → 51.
+
+[1.0.6]: https://github.com/Luotee/dualsense-mac-mapper/releases/tag/v1.0.6
+
 ## [1.0.5] - 2026-05-17
 
 ### Changed
