@@ -3,6 +3,44 @@
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/);
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.1] - 2026-05-16
+
+End-user double-click UX pass — Windows users open the exe by double
+clicking, not from a terminal. v0.1.0 first-run flow exited with code 1
+which closed the console window before they could read anything.
+
+### Changed
+
+- **First-run no longer exits.** When the bundled default
+  `dualsense-mapper.json` is written next to the exe, the program keeps
+  running with that default. The user can edit the file later and
+  restart to customize. (Previous behaviour: write default + exit code
+  1, which made the console window vanish for double-click users.)
+- **Errors pause for "Press Enter to close".** Any uncaught error from
+  `main` prints the chain, then waits on stdin, so the console window
+  stays visible long enough to read what went wrong. `--no-pause` flag
+  added for CLI / CI users who want immediate exit.
+- **Startup banner.** On normal start the exe prints program name,
+  version, config path, and "Press Ctrl-C or close window to quit".
+  First-run users also get a "Wrote default config — edit it in
+  Notepad" note.
+- First-run-written `dualsense-mapper.json` now embeds an inline
+  keyboard cheat sheet (`_help` + `_keyboard_keys` fields) so end users
+  discover valid key names directly in the file they are editing,
+  without having to consult the README. Both fields start with `_` and
+  are silently ignored by the config loader (serde drops unknown keys),
+  so the file validates and round-trips normally.
+
+### Added
+
+- `--no-pause` CLI flag.
+
+### Removed
+
+- GitHub Release no longer bundles a separate `config.example.json`.
+  The exe writes the same content on first run, so shipping both was
+  redundant.
+
 ## [0.1.0] - 2026-05-16
 
 First Rust rewrite ship. Single-binary Windows `.exe` portable bundle.
@@ -59,4 +97,5 @@ Legacy Python (`legacy-python/`) remains in repo as frozen reference.
 - macOS support is Phase 2 (uses `enigo` 0.6's `CGEvent` backend, no
   code change expected in `keyboard.rs`).
 
+[0.1.1]: https://github.com/Luotee/dualsense-mac-mapper/releases/tag/v0.1.1
 [0.1.0]: https://github.com/Luotee/dualsense-mac-mapper/releases/tag/v0.1.0

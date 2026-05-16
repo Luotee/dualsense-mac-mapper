@@ -6,16 +6,20 @@ PS5 DualSense → keyboard mapper. Single executable, JSON config, supports macr
 
 Phase 1: Windows build. macOS support comes in Phase 2.
 
-## Quick start
+## Quick start (Windows, double-click)
 
-1. Plug in a DualSense controller (USB).
-2. Drop `dualsense-mapper.exe` anywhere you have write access (e.g. `C:\dualsense-mapper\` or `Downloads\dualsense-mapper\`).
-3. Run `dualsense-mapper.exe`. The config lives **next to the exe** as `dualsense-mapper.json`. If it's missing on first run, the exe writes a default copy and exits so you can review it.
-4. Edit `dualsense-mapper.json` — keep all 25 button ids; change `type` / `value` to your taste.
-5. Run again. Press buttons; the mapped keys are sent to the focused window.
-6. Ctrl-C to quit. Every held key is released on exit, on panic, and on disconnect.
+1. Download `dualsense-mapper.exe` from the [latest release](https://github.com/Luotee/dualsense-mac-mapper/releases) into a folder you can write to (e.g. `C:\Users\<you>\Downloads\dualsense-mapper\`).
+2. Plug in DualSense via USB.
+3. Double-click `dualsense-mapper.exe`. The console window opens with a startup banner. On first run it also writes `dualsense-mapper.json` next to the exe — that file has an inline keyboard cheat sheet at the top.
+4. Press gamepad buttons; the mapped keys are sent to the focused application.
+5. To customize: open `dualsense-mapper.json` in Notepad, change the `value` field of any binding to a key name from the cheat sheet, save, restart the exe.
+6. To quit: press **Ctrl-C** inside the console window, or just close the window.
+
+Every held key is released on exit, on panic, and on controller disconnect, so nothing gets stuck.
 
 The folder is portable: copy `dualsense-mapper.exe` + `dualsense-mapper.json` to a USB stick, plug it into another Windows machine, run from there.
+
+If anything goes wrong, the program shows the error and waits for you to press Enter — the console will not flash and disappear.
 
 ## CLI
 
@@ -26,6 +30,7 @@ The folder is portable: copy `dualsense-mapper.exe` + `dualsense-mapper.json` to
 | `--dry-run` | Print every synthesized event instead of typing real keys. Use this before going live in a game. |
 | `--list-buttons` | Print every gamepad event with its label. Use this to discover which id each button has on your system. |
 | `--verbose` | Debug-level logs. |
+| `--no-pause` | Skip the "Press Enter to close" prompt that appears on errors. For CLI / CI use. |
 
 ## Button id reference
 
