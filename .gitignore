@@ -1,0 +1,15 @@
+# Superpowers brainstorming / plan artifacts — local working state only.
+# Never tracked. Implementation lands in code + CHANGELOG, not in spec/plan
+# markdown.
+docs/superpowers/
+
+# Rust build output
+**/target/
+
+# IDE / OS noise
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+*.swp
+*.swo

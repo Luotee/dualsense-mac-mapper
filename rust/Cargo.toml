@@ -1,0 +1,38 @@
+[package]
+name = "dualsense-mapper"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.75"
+description = "Map PS5 DualSense buttons and analog inputs to keyboard keys."
+license = "MIT"
+
+[[bin]]
+name = "dualsense-mapper"
+path = "src/main.rs"
+
+[lib]
+name = "dualsense_mapper"
+path = "src/lib.rs"
+
+[dependencies]
+gilrs = "0.10"
+enigo = "0.6"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+clap = { version = "4", features = ["derive"] }
+ctrlc = "3"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
+fastrand = "2"
+anyhow = "1"
+thiserror = "1"
+
+[features]
+default = []
+tray = []
+hot_reload = []
+
+[profile.release]
+lto = true
+codegen-units = 1
+strip = true
