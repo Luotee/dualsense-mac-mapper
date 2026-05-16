@@ -1,3 +1,10 @@
+// In release builds on Windows, link as a GUI subsystem app so double-click
+// doesn't open a console window. Debug builds keep the console subsystem
+// for `cargo run` ergonomics. CLI subcommands (`--cli`, `--validate`,
+// `--list-buttons`) re-attach the parent console at runtime so prints
+// still appear when launched from cmd.exe — see `attach_parent_console`.
+#![cfg_attr(all(windows, not(debug_assertions)), windows_subsystem = "windows")]
+
 use anyhow::{Context, Result};
 use clap::{ArgAction, Parser};
 use dualsense_mapper::app;
@@ -43,6 +50,12 @@ struct Cli {
 }
 
 fn main() {
+    // Always try to attach to the parent process's console. From cmd.exe
+    // this gives us working stdout/stderr; from a double-click there is
+    // no parent console and the call fails silently. Either way the GUI
+    // subsystem release build never spawns a new black window.
+    attach_parent_console();
+
     // We parse once up-front to know whether to pause on error. If parsing
     // itself fails, clap prints its own message and exits cleanly — pause
     // afterward so a double-click user can read what was wrong.
@@ -70,15 +83,58 @@ fn main() {
     };
 
     if let Err(e) = real_main(&cli) {
+        let msg = format!("{e:#}");
         eprintln!();
-        eprintln!("Error: {e:#}");
+        eprintln!("Error: {msg}");
         eprintln!();
-        if !cli.no_pause {
+        // GUI path on Windows: if the error happened before a window
+        // existed (config parse, first-run write, etc.), stderr goes
+        // nowhere on a double-click. Pop a MessageBox so the user sees
+        // *something*. CLI mode still uses the stdin pause.
+        if !cli.cli && !cli.validate && !cli.list_buttons {
+            show_fatal_dialog(&msg);
+        } else if !cli.no_pause {
             pause_on_error();
         }
         std::process::exit(1);
     }
 }
+
+#[cfg(windows)]
+fn attach_parent_console() {
+    use windows_sys::Win32::System::Console::{AttachConsole, ATTACH_PARENT_PROCESS};
+    // SAFETY: AttachConsole is safe to call from any thread; if the
+    // process has no parent console it returns 0 and we ignore that.
+    unsafe {
+        AttachConsole(ATTACH_PARENT_PROCESS);
+    }
+}
+
+#[cfg(not(windows))]
+fn attach_parent_console() {}
+
+#[cfg(windows)]
+fn show_fatal_dialog(msg: &str) {
+    use std::iter::once;
+    use windows_sys::Win32::UI::WindowsAndMessaging::{MessageBoxW, MB_ICONERROR, MB_OK};
+    let body: Vec<u16> = msg.encode_utf16().chain(once(0)).collect();
+    let title: Vec<u16> = "DualSense Mapper — Error"
+        .encode_utf16()
+        .chain(once(0))
+        .collect();
+    // SAFETY: pointers point into Vec<u16> that lives for the call.
+    unsafe {
+        MessageBoxW(
+            std::ptr::null_mut(),
+            body.as_ptr(),
+            title.as_ptr(),
+            MB_ICONERROR | MB_OK,
+        );
+    }
+}
+
+#[cfg(not(windows))]
+fn show_fatal_dialog(_msg: &str) {}
 
 fn real_main(cli: &Cli) -> Result<()> {
     let filter = if cli.verbose {

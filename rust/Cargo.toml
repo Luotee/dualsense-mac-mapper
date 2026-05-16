@@ -31,6 +31,9 @@ notify = { version = "6", default-features = false, features = ["macos_kqueue"] 
 tauri = { version = "2", features = ["tray-icon", "image-ico", "devtools"], optional = true }
 tauri-plugin-single-instance = { version = "2", optional = true }
 
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.59", features = ["Win32_System_Console", "Win32_UI_WindowsAndMessaging", "Win32_Foundation"] }
+
 [features]
 default = []
 gui = ["dep:tauri", "dep:tauri-plugin-single-instance", "dep:tauri-build"]
