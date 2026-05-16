@@ -124,6 +124,29 @@ use enigo::Key;
 pub fn parse_key(name: &str) -> Result<Key> {
     if name.chars().count() == 1 {
         let c = name.chars().next().unwrap();
+        // On Windows, route ASCII letters and digits through Key::Other(VK)
+        // so they are injected as real virtual-key events (auto-repeat fires,
+        // games that read virtual-key state can see them). Key::Unicode goes
+        // through KEYEVENTF_UNICODE which inserts a character but does NOT
+        // register as a held key — that's the bug we're fixing here.
+        //
+        // Linux keeps Key::Unicode as the simple fallback; the real product
+        // only runs on Windows, this branch exists so cargo test still works
+        // on a Linux dev host.
+        #[cfg(target_os = "windows")]
+        {
+            if c.is_ascii_alphabetic() {
+                // VK_A..VK_Z == 0x41..0x5A, same as ASCII upper-case codes
+                let vk = c.to_ascii_uppercase() as u32;
+                return Ok(Key::Other(vk));
+            }
+            if c.is_ascii_digit() {
+                // VK_0..VK_9 == 0x30..0x39, same as ASCII digit codes
+                return Ok(Key::Other(c as u32));
+            }
+            // Other ASCII printable (`-`, `=`, `,`, `.`, etc.): no clean VK
+            // mapping that's layout-independent, so fall through to Unicode.
+        }
         return Ok(Key::Unicode(c));
     }
     let lower = name.to_ascii_lowercase();
