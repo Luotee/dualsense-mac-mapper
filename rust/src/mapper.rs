@@ -15,11 +15,30 @@ pub struct Mapper {
     last_axis: [f32; 6],
     /// Active virtual-button state for indices 15..=24.
     virt_active: [bool; 25],
+    /// Accumulates `(id, pressed)` for any virtual-button state flip that
+    /// happens inside `transition_virtual` — sticks (15..=22) and analog
+    /// triggers (23..=24). The engine drains this every tick via
+    /// `take_visual_transitions` and forwards each entry as an
+    /// `EngineEvent::ButtonDown` / `ButtonUp` so the GUI can flash the
+    /// same press-ring it shows for real, gilrs-delivered button events.
+    pending_visual: Vec<(u32, bool)>,
 }
 
 impl Mapper {
     pub fn new(cfg: Config) -> Self {
-        Self { cfg, last_axis: [0.0; 6], virt_active: [false; 25] }
+        Self {
+            cfg,
+            last_axis: [0.0; 6],
+            virt_active: [false; 25],
+            pending_visual: Vec::new(),
+        }
+    }
+
+    /// Drain the buffered virtual-button transitions accumulated since the
+    /// last call. Each entry is `(id, pressed)`; pressed=true means the
+    /// virtual press just went active, false means it just released.
+    pub fn take_visual_transitions(&mut self) -> Vec<(u32, bool)> {
+        std::mem::take(&mut self.pending_visual)
     }
 
     pub fn config(&self) -> &Config {
@@ -115,6 +134,11 @@ impl Mapper {
         let was = self.virt_active[id as usize];
         if want_active == was { return Vec::new(); }
         self.virt_active[id as usize] = want_active;
+        // Record the transition so the engine can re-emit it as a visual
+        // ButtonDown/Up event (the GUI press-ring otherwise never lights up
+        // for stick directions or analog-trigger virtual ids, because those
+        // never come back as a real gilrs ButtonPressed event).
+        self.pending_visual.push((id, want_active));
         if want_active { self.physical_down(id) } else { self.physical_up(id) }
     }
 }
