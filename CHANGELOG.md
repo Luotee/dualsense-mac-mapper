@@ -3,6 +3,34 @@
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/);
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.4] - 2026-05-17
+
+### Changed
+
+- **Icon redesign — matches the in-app SVG controller.** All three
+  ICO assets (`rust/icons/icon.ico`, `tray-connected.ico`,
+  `tray-disconnected.ico`) are now generated from the same geometry
+  as `rust/web/controller.js`: body silhouette, touchpad notch,
+  d-pad cross, four face-button dots, two stick wells, and the PS /
+  Share / Options markers cut out as negative space. L1 / R1 / L2 /
+  R2 (the parts that protrude above the body) are dropped from the
+  icon — they were noise at icon resolution. Each ICO carries
+  hand-tuned 16 / 32 / 48 / 256 layers (16 is a pure silhouette;
+  32 keeps stick wells + d-pad; 48 adds face buttons + touchpad;
+  256 has the full detail set). Solarized palette: accent blue for
+  the app icon, success green when a controller is connected,
+  muted grey when disconnected.
+
+### Build
+
+- New `scripts/build_icons.py` generator that produces all three
+  ICOs from the same parametrised silhouette. PIL only (no SVG
+  renderer dependency); each ICO is assembled as a manual
+  multi-resolution container so the smaller layers stay
+  hand-tuned instead of resampled from the 256 master.
+
+[1.0.4]: https://github.com/Luotee/dualsense-mac-mapper/releases/tag/v1.0.4
+
 ## [1.0.3] - 2026-05-16
 
 ### Changed
