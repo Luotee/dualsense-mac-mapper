@@ -61,6 +61,10 @@ pub fn run(cfg: Config, opts: RunOptions) -> Result<()> {
             // retrieved in Task 25 via `app.state::<TrayIcon<_>>()`.
             app.manage(tray);
 
+            // Spawn the engine→Tauri event bridge. Runs for the lifetime of
+            // the process; the thread dies when the process exits (Iron rule §11).
+            crate::gui::events::spawn(app.handle().clone(), handle_for_setup.clone());
+
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
