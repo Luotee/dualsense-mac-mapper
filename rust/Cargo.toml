@@ -26,11 +26,13 @@ tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
 fastrand = "2"
 anyhow = "1"
 thiserror = "1"
+crossbeam-channel = "0.5"
 
 [features]
 default = []
 tray = []
 hot_reload = []
+test-utils = []
 
 [profile.release]
 lto = true

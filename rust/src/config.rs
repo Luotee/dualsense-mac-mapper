@@ -64,6 +64,13 @@ impl Config {
         Ok(cfg)
     }
 
+    pub fn load_from_str(s: &str) -> Result<Self> {
+        let cfg: Config = serde_json::from_str(s)
+            .context("parsing config from string")?;
+        cfg.validate()?;
+        Ok(cfg)
+    }
+
     pub fn validate(&self) -> Result<()> {
         if self.version != 1 {
             bail!("unsupported config version {}; expected 1", self.version);

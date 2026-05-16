@@ -43,6 +43,11 @@ impl KeyState {
         self.counts.clear();
         held
     }
+
+    /// Number of keys with a positive refcount (i.e., currently pressed).
+    pub fn len_held(&self) -> usize {
+        self.counts.values().filter(|&&c| c > 0).count()
+    }
 }
 
 pub type SharedKeyState = Arc<Mutex<KeyState>>;
