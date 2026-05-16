@@ -27,6 +27,7 @@ fastrand = "2"
 anyhow = "1"
 thiserror = "1"
 crossbeam-channel = "0.5"
+notify = { version = "6", default-features = false, features = ["macos_kqueue"] }
 
 [features]
 default = []
