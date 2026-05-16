@@ -78,6 +78,7 @@ pub fn run(cfg: Config, opts: RunOptions) -> Result<()> {
             crate::gui::commands::pause_mapper,
             crate::gui::commands::open_config_in_editor,
             crate::gui::commands::quit,
+            crate::gui::commands::set_capture_active,
         ])
         .manage(handle_for_state)
         .manage(opts.config_path.clone())

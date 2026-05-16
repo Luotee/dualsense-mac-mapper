@@ -375,3 +375,19 @@ pub fn quit(app: tauri::AppHandle) -> Result<(), String> {
     app.exit(0);
     Ok(())
 }
+
+/// Tauri command: toggle the engine's capture-active flag.
+///
+/// Spec §11.2: while the frontend's key-capture surface is focused (bind
+/// popup Key segment, macro step Key field), it must not pick up
+/// self-synthesised keys. The frontend flips this flag around the capture
+/// window; the engine pauses synth while it's set but still emits events.
+#[cfg(feature = "gui")]
+#[tauri::command]
+pub fn set_capture_active(
+    engine: State<'_, Handle>,
+    active: bool,
+) -> Result<(), String> {
+    engine.set_capture_active(active);
+    Ok(())
+}
