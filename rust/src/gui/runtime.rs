@@ -71,6 +71,9 @@ pub fn run(cfg: Config, opts: RunOptions) -> Result<()> {
             crate::gui::commands::rename_macro,
             crate::gui::commands::set_settings,
             crate::gui::commands::reset_settings,
+            crate::gui::commands::pause_mapper,
+            crate::gui::commands::open_config_in_editor,
+            crate::gui::commands::quit,
         ])
         .manage(handle_for_state)
         .manage(opts.config_path.clone())

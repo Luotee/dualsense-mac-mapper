@@ -300,3 +300,78 @@ pub fn reset_settings_impl(
 ) -> anyhow::Result<()> {
     set_settings_impl(engine, config_path, Settings::defaults())
 }
+
+// ─── pause_mapper ─────────────────────────────────────────────────────────────
+
+/// Tauri command: pause or unpause the mapper engine.
+///
+/// When paused the engine still receives gamepad events but suppresses all
+/// key synthesis. Already-held keys are released immediately on pause
+/// (Iron rule #2 — `set_paused` calls `release_all_held`).
+#[cfg(feature = "gui")]
+#[tauri::command]
+pub fn pause_mapper(
+    engine: tauri::State<'_, crate::engine::Handle>,
+    paused: bool,
+) -> Result<(), String> {
+    engine.set_paused(paused);
+    Ok(())
+}
+
+// ─── open_config_in_editor ───────────────────────────────────────────────────
+
+/// Tauri command: open the config file in the platform default text editor.
+///
+/// Windows: Notepad. macOS: default text editor via `open -t`. Linux: xdg-open.
+/// The command is fire-and-forget; errors are surfaced as IPC error strings.
+#[cfg(feature = "gui")]
+#[tauri::command]
+pub fn open_config_in_editor(
+    config_path: tauri::State<'_, std::path::PathBuf>,
+) -> Result<(), String> {
+    open_path(&*config_path).map_err(|e| format!("{e:#}"))
+}
+
+#[cfg(feature = "gui")]
+fn open_path(path: &std::path::Path) -> anyhow::Result<()> {
+    #[cfg(target_os = "windows")]
+    {
+        std::process::Command::new("notepad")
+            .arg(path)
+            .spawn()
+            .map_err(|e| anyhow::anyhow!("launching notepad: {e}"))?;
+    }
+    #[cfg(target_os = "macos")]
+    {
+        std::process::Command::new("open")
+            .arg("-t")
+            .arg(path)
+            .spawn()
+            .map_err(|e| anyhow::anyhow!("launching open: {e}"))?;
+    }
+    #[cfg(all(target_os = "linux", feature = "gui"))]
+    {
+        // GUI is Windows-only in v0.2.0 but the lib still compiles on Linux;
+        // use xdg-open as a courtesy.
+        std::process::Command::new("xdg-open")
+            .arg(path)
+            .spawn()
+            .map_err(|e| anyhow::anyhow!("launching xdg-open: {e}"))?;
+    }
+    Ok(())
+}
+
+// ─── quit ─────────────────────────────────────────────────────────────────────
+
+/// Tauri command: exit the process cleanly via Tauri's event loop.
+///
+/// `app.exit(0)` causes `.run(...)` in `runtime::run` to return, after which
+/// `engine.shutdown()` fires and `KeyboardSink::drop` releases held keys
+/// (Iron rule #3). This IPC wrapper exists for frontend use (e.g. Settings
+/// tab About → Quit button).
+#[cfg(feature = "gui")]
+#[tauri::command]
+pub fn quit(app: tauri::AppHandle) -> Result<(), String> {
+    app.exit(0);
+    Ok(())
+}
