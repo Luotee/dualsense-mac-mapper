@@ -6,11 +6,13 @@
 //! `engine.shutdown()` fires, releasing all held keys (Iron rule #3).
 
 use crate::config::Config;
+use crate::config_io::ConfigDoc;
 use crate::engine::Engine;
 use crate::safety;
 use anyhow::{Context, Result};
+use crossbeam_channel::unbounded;
 use std::path::PathBuf;
-use tauri::{Manager, WebviewWindowBuilder};
+use tauri::{Emitter, Manager, WebviewWindowBuilder};
 
 /// Options forwarded from `main.rs` into the GUI runtime.
 pub struct RunOptions {
@@ -35,6 +37,7 @@ pub fn run(cfg: Config, opts: RunOptions) -> Result<()> {
     // can still be called on the builder after the closure has captured its copy.
     let handle_for_setup = handle.clone();
     let handle_for_state = handle.clone();
+    let config_path_for_setup = opts.config_path.clone();
 
     let result = tauri::Builder::default()
         .plugin(tauri_plugin_single_instance::init(|app, _argv, _cwd| {
@@ -64,6 +67,41 @@ pub fn run(cfg: Config, opts: RunOptions) -> Result<()> {
             // Spawn the engine→Tauri event bridge. Runs for the lifetime of
             // the process; the thread dies when the process exits (Iron rule §11).
             crate::gui::events::spawn(app.handle().clone(), handle_for_setup.clone());
+
+            // Spec §11.3: watch the config file for external edits (user
+            // opens it in Notepad while the GUI is running). On a debounced
+            // change event reload via ConfigDoc, hot-rebind the live engine,
+            // emit `config-changed` to the frontend; on validation failure
+            // emit `validation-error` so the frontend can show a banner.
+            let (notify_tx, notify_rx) = unbounded::<()>();
+            let watcher = crate::gui::file_watcher::spawn(
+                config_path_for_setup.clone(),
+                notify_tx,
+            )?;
+            app.manage(watcher);
+
+            let app_for_watcher = app.handle().clone();
+            let handle_for_watcher = handle_for_setup.clone();
+            let path_for_watcher = config_path_for_setup.clone();
+            std::thread::spawn(move || {
+                for _ in notify_rx.iter() {
+                    match ConfigDoc::load(&path_for_watcher) {
+                        Ok(doc) => {
+                            *handle_for_watcher.config_write() = doc.typed().clone();
+                            let _ = app_for_watcher.emit(
+                                "config-changed",
+                                serde_json::json!({ "source": "file" }),
+                            );
+                        }
+                        Err(e) => {
+                            let _ = app_for_watcher.emit(
+                                "validation-error",
+                                serde_json::json!({ "message": format!("{e:#}") }),
+                            );
+                        }
+                    }
+                }
+            });
 
             Ok(())
         })
