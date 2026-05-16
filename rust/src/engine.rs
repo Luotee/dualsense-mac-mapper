@@ -121,6 +121,12 @@ impl Handle {
         self.inner.key_state.lock().unwrap_or_else(|p| p.into_inner()).len_held()
     }
 
+    /// Return a clone of the engine's key-state Arc. Used by `app::run` to
+    /// register the global panic-hook state after the engine is spawned.
+    pub fn key_state(&self) -> crate::safety::SharedKeyState {
+        self.inner.key_state.clone()
+    }
+
     /// Inject a fake ButtonDown event. Works only when spawned via
     /// `Engine::spawn_with_fake_gamepad`; no-op otherwise.
     #[doc(hidden)]

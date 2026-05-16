@@ -3,6 +3,7 @@ use clap::{ArgAction, Parser};
 use dualsense_mapper::app;
 use dualsense_mapper::config::Config;
 use dualsense_mapper::gamepad::{GamepadEvent, GamepadSource};
+use dualsense_mapper::safety;
 use std::io::Write;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -86,6 +87,18 @@ fn real_main(cli: &Cli) -> Result<()> {
         EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info"))
     };
     tracing_subscriber::fmt().with_env_filter(filter).init();
+
+    // Iron rule #3: panic on any thread must release held keys at the OS level.
+    // Installed here — before CLI or GUI dispatch — so both paths are covered
+    // from a single site. The Drop on KeyboardSink covers the normal shutdown
+    // path; this hook covers the abnormal (panic) path.
+    let panic_default = std::panic::take_hook();
+    std::panic::set_hook(Box::new(move |info| {
+        if let Err(e) = safety::emergency_release_all() {
+            eprintln!("emergency key release failed: {e:#}");
+        }
+        panic_default(info);
+    }));
 
     let cfg_path = resolve_config_path(cli.config.as_deref())?;
 
