@@ -1,4 +1,25 @@
 {
+  "_help": [
+    "Edit the 'buttons' section to remap. Change 'type' to one of:",
+    "  - 'key'      : set 'value' to a key name from _keyboard_keys below",
+    "  - 'macro'    : set 'value' to a macro name defined in 'macros'",
+    "  - 'unbound'  : do nothing (omit 'value')",
+    "Restart the exe after editing — there is no hot reload in v0.1.x.",
+    "Fields starting with '_' are documentation only and ignored by the program."
+  ],
+  "_keyboard_keys": {
+    "letters_and_digits": [
+      "Any single ASCII character is the physical key of the same letter or digit.",
+      "Examples: \"x\", \"X\", \"a\", \"0\", \"9\". Case does not matter."
+    ],
+    "modifiers":   ["Shift", "Control", "Ctrl", "Alt", "Meta", "Win", "Cmd"],
+    "arrows":      ["Up", "Down", "Left", "Right"],
+    "edit_keys":   ["Space", "Enter", "Return", "Tab", "Escape", "Esc", "Backspace", "Delete", "Del"],
+    "navigation":  ["Home", "End", "PageUp", "PageDown"],
+    "function":    ["F1", "F2", "F3", "F4", "F5", "F6", "F7", "F8", "F9", "F10", "F11", "F12"],
+    "note": "Unknown key names fail loudly at startup — the validator names the bad binding."
+  },
+
   "version": 1,
   "deadzone": 0.4,
   "trigger_threshold": 0.5,

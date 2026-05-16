@@ -101,6 +101,22 @@ regresses real, observed bugs the codebase already fixed once:
 7. **No process hooking, no DLL injection, no driver.** User-mode
    `SendInput` (Windows) / `CGEvent` (macOS) only, via the `enigo`
    crate. Anything else lands us in actual cheat-software territory.
+8. **The exe is double-clicked, not invoked from a terminal.** Primary
+   end-user flow on Windows is Explorer → double-click → console
+   window opens. That means:
+   - First-run path may **not** call `anyhow::bail!` / exit non-zero
+     before reaching the main loop. Doing so closes the console
+     window before the user can read the message.
+   - Any uncaught error from `main` must pause (read stdin) before
+     exit, so the error is visible. `--no-pause` is the explicit
+     opt-out for CLI / CI use.
+   - The startup banner is the user's primary feedback that the
+     program is running. Don't remove it without a replacement.
+   - The first-run-written `dualsense-mapper.json` carries an inline
+     keyboard cheat sheet in `_help` and `_keyboard_keys` fields so
+     a user editing the file in Notepad has the reference inline.
+     `serde` ignores unknown fields, so these are documentation
+     only — but they are load-bearing UX, not decoration.
 
 ## Anti-cheat self-discipline
 

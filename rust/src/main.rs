@@ -3,6 +3,7 @@ use clap::{ArgAction, Parser};
 use dualsense_mapper::app;
 use dualsense_mapper::config::Config;
 use dualsense_mapper::gamepad::{GamepadEvent, GamepadSource};
+use std::io::Write;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
@@ -11,7 +12,7 @@ use tracing_subscriber::EnvFilter;
 #[derive(Parser, Debug)]
 #[command(name = "dualsense-mapper", version, about)]
 struct Cli {
-    /// Path to config.json. Defaults to <config_dir>/dualsense-mapper/config.json.
+    /// Path to config.json. Defaults to <exe_dir>/dualsense-mapper.json.
     #[arg(long)]
     config: Option<PathBuf>,
 
@@ -30,11 +31,51 @@ struct Cli {
     /// Verbose logging.
     #[arg(long, action = ArgAction::SetTrue)]
     verbose: bool,
+
+    /// Do not pause for "Press Enter to close" on error (CLI scripts / CI).
+    #[arg(long, action = ArgAction::SetTrue)]
+    no_pause: bool,
 }
 
-fn main() -> Result<()> {
-    let cli = Cli::parse();
+fn main() {
+    // We parse once up-front to know whether to pause on error. If parsing
+    // itself fails, clap prints its own message and exits cleanly — pause
+    // afterward so a double-click user can read what was wrong.
+    let cli_parse = Cli::try_parse();
+    let no_pause = match &cli_parse {
+        Ok(c) => c.no_pause,
+        Err(_) => false,
+    };
+    let cli = match cli_parse {
+        Ok(c) => c,
+        Err(e) => {
+            // clap renders --help / --version through this same path.
+            // Pause only on actual error kinds.
+            let kind = e.kind();
+            let _ = e.print();
+            if matches!(
+                kind,
+                clap::error::ErrorKind::DisplayHelp | clap::error::ErrorKind::DisplayVersion
+            ) {
+                std::process::exit(0);
+            }
+            if !no_pause { pause_on_error(); }
+            std::process::exit(2);
+        }
+    };
 
+    if let Err(e) = real_main(&cli) {
+        eprintln!();
+        eprintln!("Error: {e:#}");
+        eprintln!();
+        if !cli.no_pause {
+            pause_on_error();
+        }
+        std::process::exit(1);
+    }
+}
+
+fn real_main(cli: &Cli) -> Result<()> {
     let filter = if cli.verbose {
         EnvFilter::new("dualsense_mapper=debug,info")
     } else {
@@ -50,10 +91,15 @@ fn main() -> Result<()> {
         return list_buttons(cfg);
     }
 
-    // Every other path needs a valid config; if it doesn't exist, try first-run copy.
-    if !cfg_path.exists() {
+    // Every other path needs a valid config; if it doesn't exist, write the
+    // bundled default beside the exe. Unlike v0.1.0, we keep running with
+    // that default — a double-clicked exe should "just work" out of the box.
+    let just_wrote_default = if !cfg_path.exists() {
         first_run_copy(&cfg_path)?;
-    }
+        true
+    } else {
+        false
+    };
     let cfg = Config::load_from_path(&cfg_path)
         .with_context(|| format!("loading config at {}", cfg_path.display()))?;
 
@@ -61,6 +107,8 @@ fn main() -> Result<()> {
         println!("OK: config at {} is valid.", cfg_path.display());
         return Ok(());
     }
+
+    print_banner(&cfg_path, cli.dry_run, just_wrote_default);
 
     let shutdown = Arc::new(AtomicBool::new(false));
     {
@@ -70,6 +118,35 @@ fn main() -> Result<()> {
     }
 
     app::run(cfg, app::RunOptions { dry_run: cli.dry_run, shutdown })
+}
+
+fn print_banner(cfg_path: &std::path::Path, dry_run: bool, just_wrote_default: bool) {
+    println!("=================================================");
+    println!(" DualSense Mapper v{}", env!("CARGO_PKG_VERSION"));
+    println!(" Config: {}", cfg_path.display());
+    if dry_run {
+        println!(" Mode:   DRY-RUN (no real keystrokes sent)");
+    }
+    println!("-------------------------------------------------");
+    if just_wrote_default {
+        println!(" Wrote default config — open the file above in");
+        println!(" Notepad to customize. The file has an inline");
+        println!(" keyboard cheat sheet at the top.");
+        println!(" Restart this program after you save changes.");
+        println!("-------------------------------------------------");
+    }
+    println!(" Plug in DualSense via USB. Press buttons; the");
+    println!(" mapped keys are sent to the focused window.");
+    println!(" Press Ctrl-C or close this window to quit.");
+    println!("=================================================");
+    println!();
+}
+
+fn pause_on_error() {
+    eprintln!("Press Enter to close this window.");
+    let _ = std::io::stderr().flush();
+    let mut buf = String::new();
+    let _ = std::io::stdin().read_line(&mut buf);
 }
 
 fn resolve_config_path(explicit: Option<&std::path::Path>) -> Result<PathBuf> {
@@ -89,10 +166,9 @@ fn first_run_copy(target: &std::path::Path) -> Result<()> {
     }
     std::fs::write(target, example_text)
         .with_context(|| format!("writing default config to {}", target.display()))?;
-    eprintln!("[first run] wrote default config: {}", target.display());
-    eprintln!("[first run] edit this file to customize your mapping, then re-run.");
-    // Refuse to start so the user actually sees the file path.
-    anyhow::bail!("first-run config written; re-run after reviewing it");
+    // Don't bail — the bundled default is valid, so we continue with it.
+    // The startup banner will tell the user the file was created.
+    Ok(())
 }
 
 fn list_buttons(cfg: Option<Config>) -> Result<()> {
