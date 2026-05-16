@@ -3,26 +3,39 @@
 <head>
   <meta charset="UTF-8">
   <title>DualSense Mapper</title>
-  <style>
-    body { font-family: system-ui; padding: 40px; color: #657b83; background: #fdf6e3; }
-    h1   { color: #073642; }
-    code { background: rgba(38,139,210,0.10); color: #268bd2; padding: 2px 6px; border-radius: 3px; }
-  </style>
+  <link rel="stylesheet" href="./solarized.css">
+  <link rel="stylesheet" href="./style.css">
 </head>
 <body>
-  <h1>DualSense Mapper</h1>
-  <p id="status">Loading config…</p>
+  <div class="app">
+    <div class="toolbar">
+      <div class="status">
+        <span class="dot">●</span>
+        <span id="status-text">Waiting for controller…</span>
+      </div>
+      <div class="tools">
+        <button class="icon-btn" id="btn-activity" title="Activity log">📊</button>
+        <button class="icon-btn" id="btn-settings" title="Settings">⚙</button>
+      </div>
+    </div>
+    <div class="tabs">
+      <div class="tab active" data-tab="mappings">Mappings</div>
+      <div class="tab"          data-tab="macros">Macros</div>
+      <div class="tab"          data-tab="settings">Settings</div>
+    </div>
+    <div class="tab-content">
+      <div class="pane active" id="pane-mappings">
+        <p class="muted">Mappings UI — Phase 5 placeholder. Controller diagram + chip list land in Tasks 19/20.</p>
+      </div>
+      <div class="pane" id="pane-macros">
+        <p class="muted">Macros UI — placeholder for Task 22.</p>
+      </div>
+      <div class="pane" id="pane-settings">
+        <p class="muted">Settings UI — placeholder for Task 23.</p>
+      </div>
+    </div>
+  </div>
   <script type="module" src="./ipc.js"></script>
-  <script type="module">
-    import { invoke } from './ipc.js';
-    try {
-      const cfg = await invoke('get_config');
-      document.getElementById('status').innerHTML =
-        `Loaded config v${cfg.version}, <code>${Object.keys(cfg.buttons).length}</code> buttons, ` +
-        `<code>${Object.keys(cfg.macros).length}</code> macros.`;
-    } catch (e) {
-      document.getElementById('status').textContent = `Error loading config: ${e}`;
-    }
-  </script>
+  <script type="module" src="./app.js"></script>
 </body>
 </html>
