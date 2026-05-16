@@ -44,9 +44,11 @@ const R_STICK = { cx: 156, cy: 82, r: 9 };
 
 function elements() {
   return [
-    // Triggers (top)
-    el(23, 'trigger',    { rx: 44,  ry: 10, w: 26, h: 11 }, 'L2'),
-    el(24, 'trigger',    { rx: 170, ry: 10, w: 26, h: 11 }, 'R2'),
+    // Triggers (top) — same dimensions as the shoulders below; the
+    // user asked for L2/R2 to match L1/R1 visually instead of being
+    // the chunky over-sized blocks they were in v1.0.x.
+    el(23, 'trigger',    { rx: 48,  ry: 10, w: 22, h: 6 },  'L2'),
+    el(24, 'trigger',    { rx: 170, ry: 10, w: 22, h: 6 },  'R2'),
 
     // Shoulders (just below triggers, on body's top edge)
     el(9,  'shoulder',   { rx: 48,  ry: 22, w: 22, h: 6 },  'L1'),
@@ -183,14 +185,20 @@ export function render(parent, bindings) {
         shape = mkCircle(ns, e.geo.cx, e.geo.cy, e.geo.r, `hit ${cls}`);
         break;
       }
-      case 'dpad_wedge':
+      case 'dpad_wedge': {
+        // Pentagon-shaped arrow pointing outward from the d-pad centre.
+        // Replaces the v1.0.x triangle wedge so a bound direction tints
+        // visibly with its own arrow outline (the press-ring clone then
+        // animates the same arrow shape on physical press).
+        shape = mkArrow(ns, e.geo.cx, e.geo.cy, e.geo.dir, `hit wedge ${cls}`);
+        break;
+      }
       case 'stick_wedge': {
-        // Wedges are layered over the cross / well sprite. Carry the
-        // binding kind class so a bound direction tints visibly, but tag
-        // them as `wedge` so the CSS can dial down fill-opacity and let
-        // the sprite show through. `binding-unbound` zeroes opacity, so
-        // unbound wedges stay invisible — same as before.
-        shape = mkWedge(ns, e.geo.cx, e.geo.cy, e.geo.dir, `hit wedge ${cls}`);
+        // Donut quarter arc around the stick well. Each quarter is its
+        // own hit zone; the inner L3/R3 circle (stick_press) covers the
+        // central press. Same `wedge` class so unbound is transparent
+        // and bound tints with the binding colour.
+        shape = mkQuarter(ns, e.geo.cx, e.geo.cy, e.geo.dir, `hit wedge ${cls}`);
         break;
       }
       default:
@@ -323,29 +331,101 @@ function mkCircle(ns, cx, cy, r, cls) {
 }
 
 /**
- * Triangular wedge hit zone around a centre point, pointing in one direction.
- * Radius ≈ 14 px, covering 90° of arc (quarter of the stick / d-pad area).
+ * Pentagon-shaped arrow hit zone pointing outward from a centre point.
+ * Used for the four d-pad directions: a small flat-tail / pointed-tip
+ * shape that sits over one arm of the cross sprite so the bound
+ * direction tints with its own outline and the press-ring animation
+ * follows the same arrow silhouette.
+ *
+ * Layout (for `up`):
+ *
+ *        apex
+ *         /\
+ *        /  \
+ *       |    |    shoulders
+ *        \__/     base
  *
  * @param {string} ns
- * @param {number} cx   - Centre X (stick well centre or d-pad centre)
- * @param {number} cy   - Centre Y
+ * @param {number} cx   - D-pad centre X
+ * @param {number} cy   - D-pad centre Y
  * @param {string} dir  - 'up' | 'down' | 'left' | 'right'
  * @param {string} cls
  * @returns {SVGPathElement}
  */
-function mkWedge(ns, cx, cy, dir, cls) {
-  const R    = 14;   // outer reach from centre
-  const half = 8;    // half-width at the outer edge
+function mkArrow(ns, cx, cy, dir, cls) {
+  const R         = 9;   // apex reach from d-pad centre
+  const base      = 3;   // base distance from centre (where flat tail sits)
+  const half_w    = 3;   // half-width of the body
+  const shoulder  = 6;   // shoulder distance from centre (where width tapers)
 
-  const d = {
-    up:    `M ${cx - half} ${cy - R} L ${cx + half} ${cy - R} L ${cx} ${cy} Z`,
-    down:  `M ${cx - half} ${cy + R} L ${cx + half} ${cy + R} L ${cx} ${cy} Z`,
-    left:  `M ${cx - R} ${cy - half} L ${cx - R} ${cy + half} L ${cx} ${cy} Z`,
-    right: `M ${cx + R} ${cy - half} L ${cx + R} ${cy + half} L ${cx} ${cy} Z`,
-  };
+  // Build the 5-point polygon in the canonical "up" orientation, then
+  // rotate the points by mapping (x, y) → (rx, ry) per direction.
+  const up = [
+    [-half_w, -base],     // base left
+    [-half_w, -shoulder], // shoulder left
+    [0,      -R],         // apex
+    [+half_w, -shoulder], // shoulder right
+    [+half_w, -base],     // base right
+  ];
+  const map = {
+    up:    ([x, y]) => [x,  y],
+    down:  ([x, y]) => [x, -y],
+    left:  ([x, y]) => [y,  x],
+    right: ([x, y]) => [-y, x],
+  }[dir];
+
+  const pts = up
+    .map(map)
+    .map(([dx, dy]) => `${cx + dx} ${cy + dy}`)
+    .join(' L ');
+  const d = `M ${pts} Z`;
 
   const p = document.createElementNS(ns, 'path');
-  p.setAttribute('d',     d[dir]);
+  p.setAttribute('d',     d);
+  p.setAttribute('class', cls);
+  return p;
+}
+
+/**
+ * Donut quarter hit zone around a stick well. Inner radius hugs the
+ * stick well ring; outer radius reaches into the live-press area.
+ * Spans 90° per direction. The inner stick_press circle (L3/R3) sits
+ * concentric inside this and is rendered after, so it stays on top.
+ *
+ * @param {string} ns
+ * @param {number} cx   - Stick centre X
+ * @param {number} cy   - Stick centre Y
+ * @param {string} dir  - 'up' | 'down' | 'left' | 'right'
+ * @param {string} cls
+ * @returns {SVGPathElement}
+ */
+function mkQuarter(ns, cx, cy, dir, cls) {
+  const r_in  = 10;  // just outside the stick-well ring (r=9)
+  const r_out = 16;  // outer reach
+
+  // SVG angle convention: 0° = +x, 90° = +y (down), so "up" centres
+  // on −90° (i.e., 270°). Each quarter spans 90°, ±45° around its
+  // direction's centre.
+  const centre = { right: 0, down: 90, left: 180, up: 270 }[dir];
+  const a0 = (centre - 45) * Math.PI / 180;
+  const a1 = (centre + 45) * Math.PI / 180;
+
+  const o0 = [cx + r_out * Math.cos(a0), cy + r_out * Math.sin(a0)];
+  const o1 = [cx + r_out * Math.cos(a1), cy + r_out * Math.sin(a1)];
+  const i1 = [cx + r_in  * Math.cos(a1), cy + r_in  * Math.sin(a1)];
+  const i0 = [cx + r_in  * Math.cos(a0), cy + r_in  * Math.sin(a0)];
+
+  // 90° arc → large-arc flag 0; outer arc CW (sweep 1), inner CCW (0).
+  const d = [
+    `M ${o0[0]} ${o0[1]}`,
+    `A ${r_out} ${r_out} 0 0 1 ${o1[0]} ${o1[1]}`,
+    `L ${i1[0]} ${i1[1]}`,
+    `A ${r_in}  ${r_in}  0 0 0 ${i0[0]} ${i0[1]}`,
+    'Z',
+  ].join(' ');
+
+  const p = document.createElementNS(ns, 'path');
+  p.setAttribute('d',     d);
   p.setAttribute('class', cls);
   return p;
 }

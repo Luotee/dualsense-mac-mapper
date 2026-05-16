@@ -26,10 +26,10 @@ from PIL import Image, ImageDraw
 REPO = Path(__file__).resolve().parent.parent
 ICONS_DIR = REPO / "rust" / "icons"
 
-# Solarized palette — same hex values as rust/web/solarized.css.
-ACCENT  = "#268bd2"  # app icon
-SUCCESS = "#859900"  # tray when controller connected
-MUTED   = "#839496"  # tray when controller disconnected
+# Gruvbox Dark palette — same hex values as rust/web/palette.css.
+ACCENT  = "#83a598"  # app icon (Gruvbox blue)
+SUCCESS = "#b8bb26"  # tray when controller connected (Gruvbox green)
+MUTED   = "#a89984"  # tray when controller disconnected (Gruvbox fg4)
 
 # GUI controller geometry (matches rust/web/controller.js):
 # - SVG viewBox is 240 × 130 (wide). For a square ICO we centre that

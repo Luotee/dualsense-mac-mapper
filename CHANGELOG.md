@@ -3,6 +3,48 @@
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/);
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.0] - 2026-05-17
+
+### Changed
+
+- **Palette: Gruvbox Dark.** `rust/web/solarized.css` is renamed to
+  `palette.css` and every CSS variable is swapped to Gruvbox Dark
+  hex values (bg `#282828`, card `#3c3836`, accent `#83a598`, macro
+  `#fe8019`, success `#b8bb26`, …). All UI surfaces — toolbar,
+  tabs, chip rows, bind popup, macro editor, settings, activity
+  drawer, controller fill / hit zones — pick the new colours up
+  automatically through the existing `var(--…)` references. ICO
+  assets are regenerated from the same source palette so the app
+  icon and tray icons stay in lockstep.
+- **D-pad hit zones are pentagon arrows.** Each direction (Up /
+  Down / Left / Right) now has its own outward-pointing pentagon
+  outline sized to its arm of the cross sprite, instead of the
+  v1.0.x shared triangle wedge. The press-ring animation follows
+  the same arrow silhouette on physical press, so each direction
+  flashes its own shape — matching the face-button per-direction
+  behaviour the user expected.
+- **Stick hit zones are donut quarters.** Each of the 4 virtual
+  stick directions (Up / Down / Left / Right) is now a quarter
+  arc of an annulus around the stick well, instead of a triangle
+  pointing into the centre. The L3 / R3 inner circle (id 7 / 8)
+  stays concentric on top, so each stick has five distinct,
+  individually-flashing hit zones (4 quarters + 1 centre).
+- **L2 / R2 match L1 / R1 size.** Triggers used to be 26×11 over
+  the body's top edge — visibly chunkier than the 22×6 shoulders.
+  Both pairs are now 22×6 with L2 / R2 sitting six pixels above
+  L1 / R1, producing a balanced top edge.
+
+### Build
+
+- `scripts/build_icons.py` palette constants point at the new
+  Gruvbox values; existing `python3 scripts/build_icons.py` flow
+  is unchanged.
+- New `scripts/palette_mockup.py` renders the GUI under several
+  palettes side-by-side; used during brainstorming before this
+  release picked Gruvbox Dark.
+
+[1.1.0]: https://github.com/Luotee/dualsense-mac-mapper/releases/tag/v1.1.0
+
 ## [1.0.6] - 2026-05-17
 
 ### Added
