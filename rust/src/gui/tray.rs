@@ -1,8 +1,10 @@
 //! System tray: green/grey icon + Open / Pause mapper / Quit menu.
 //!
-//! Spec §10: tray is the always-on UI handle. Closing the window only
-//! hides it; the tray is the only way to exit (besides `--cli` Ctrl-C
-//! and process kill).
+//! Tray is the always-on connection-state indicator and gives quick
+//! access to Pause / Quit while the window is open. Closing the
+//! window (✕) fully exits the process in v1.0.3+, so the tray's
+//! `Quit` entry is a convenience duplicate of the X button rather
+//! than the only exit path it was in v1.0.0..v1.0.2.
 
 use crate::engine::Handle;
 use anyhow::Result;
