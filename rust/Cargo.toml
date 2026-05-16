@@ -34,6 +34,9 @@ tray = []
 hot_reload = []
 test-utils = []
 
+[dev-dependencies]
+tempfile = "3"
+
 [profile.release]
 lto = true
 codegen-units = 1

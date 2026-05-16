@@ -1,4 +1,5 @@
 pub mod config;
+pub mod config_io;
 pub mod engine;
 pub mod gamepad;
 pub mod keyboard;
