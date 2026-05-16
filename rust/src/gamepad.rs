@@ -81,6 +81,12 @@ enum GamepadSourceInner {
         gilrs: Gilrs,
         dpad_x_state: i8,
         dpad_y_state: i8,
+        /// First poll() must emit `Connected` for any pad that was already
+        /// plugged in before we started. gilrs only fires `EventType::Connected`
+        /// for hot-plug, so pre-existing pads (the common Bluetooth case where
+        /// the user re-pairs once and the controller is "always there") would
+        /// otherwise never register in the GUI.
+        initial_scan_done: bool,
     },
     /// Test-only variant — inject events without a real controller.
     #[doc(hidden)]
@@ -98,6 +104,7 @@ impl GamepadSource {
                 gilrs: Gilrs::new().map_err(|e| anyhow::anyhow!("{e}"))?,
                 dpad_x_state: 0,
                 dpad_y_state: 0,
+                initial_scan_done: false,
             },
         })
     }
@@ -112,7 +119,16 @@ impl GamepadSource {
     /// Drain pending events and translate; non-blocking.
     pub fn poll(&mut self, out: &mut Vec<GamepadEvent>) {
         match &mut self.inner {
-            GamepadSourceInner::Real { gilrs, dpad_x_state, dpad_y_state } => {
+            GamepadSourceInner::Real { gilrs, dpad_x_state, dpad_y_state, initial_scan_done } => {
+                if !*initial_scan_done {
+                    // Synth a Connected event for any pad already known to gilrs
+                    // at construction time (Bluetooth re-pair case).
+                    for (_id, pad) in gilrs.gamepads() {
+                        tracing::info!(name = %pad.name(), "pre-connected gamepad detected at startup");
+                        out.push(GamepadEvent::Connected);
+                    }
+                    *initial_scan_done = true;
+                }
                 while let Some(Event { event, .. }) = gilrs.next_event() {
                     tracing::debug!(?event, "gilrs event");
                     match event {
