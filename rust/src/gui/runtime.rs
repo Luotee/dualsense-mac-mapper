@@ -66,6 +66,9 @@ pub fn run(cfg: Config, opts: RunOptions) -> Result<()> {
         .invoke_handler(tauri::generate_handler![
             crate::gui::commands::get_config,
             crate::gui::commands::set_binding,
+            crate::gui::commands::set_macro,
+            crate::gui::commands::delete_macro,
+            crate::gui::commands::rename_macro,
         ])
         .manage(handle_for_state)
         .manage(opts.config_path.clone())
