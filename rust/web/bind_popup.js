@@ -4,7 +4,8 @@ import { normaliseKeyEvent } from './key_capture.js';
 // Open a modal popup to edit one button binding. `options`:
 //   id        : number
 //   label     : string (button display label)
-//   currentEntry : { binding: 'Unbound' | { Key: string } | { Macro: string } }
+//   currentEntry : ButtonEntry as returned by `get_config` — flattened JSON:
+//                  { label, type: 'key'|'macro'|'unbound', value? }
 //   macros    : array of macro names from current config
 //   onSaved() : called after a successful save
 //   onClosed(): called after the popup is dismissed (save or cancel)
@@ -39,14 +40,11 @@ export function open(options) {
   `;
   document.body.appendChild(root);
 
-  // State
-  const current = options.currentEntry.binding;
-  let segment = (current === 'Unbound' || current === null) ? 'unbound'
-              : (typeof current === 'object' && 'Key'   in current) ? 'key'
-              : (typeof current === 'object' && 'Macro' in current) ? 'macro'
-              : 'unbound';
-  let capturedKey = (segment === 'key' && current.Key) ? current.Key : null;
-  let chosenMacro = (segment === 'macro' && current.Macro) ? current.Macro : null;
+  // State — currentEntry is the flattened JSON: { label, type, value? }
+  const entry = options.currentEntry || {};
+  let segment = entry.type || 'unbound';
+  let capturedKey = segment === 'key'   ? (entry.value ?? null) : null;
+  let chosenMacro = segment === 'macro' ? (entry.value ?? null) : null;
 
   const errorEl  = root.querySelector('.bp-error');
   const editorEl = root.querySelector('.bp-editor');
@@ -143,22 +141,20 @@ export function open(options) {
 
   root.querySelector('.bp-save').addEventListener('click', async () => {
     hideError();
-    let binding;
+    // ButtonEntry serialises flattened — see comment on `entry` above.
+    let entryOut;
     if (segment === 'key') {
       if (!capturedKey) { show('Press a key to bind, or pick Unbound.'); return; }
-      binding = { Key: capturedKey };
+      entryOut = { label: options.label, type: 'key', value: capturedKey };
     } else if (segment === 'macro') {
       if (!chosenMacro) { show('Pick a macro, or define one in the Macros tab.'); return; }
-      binding = { Macro: chosenMacro };
+      entryOut = { label: options.label, type: 'macro', value: chosenMacro };
     } else {
-      binding = 'Unbound';
+      entryOut = { label: options.label, type: 'unbound' };
     }
 
     try {
-      await invoke('set_binding', {
-        id: options.id,
-        entry: { label: options.label, binding },
-      });
+      await invoke('set_binding', { id: options.id, entry: entryOut });
     } catch (e) {
       show(`Save failed: ${e}`);
       return;

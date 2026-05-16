@@ -20,22 +20,23 @@ async function reload() {
   config = await invoke('get_config');
   const bindings = {};
   for (const [id, entry] of Object.entries(config.buttons)) {
-    bindings[id] = { kind: kindOf(entry.binding), value: valueOf(entry.binding) };
+    bindings[id] = { kind: kindOf(entry), value: valueOf(entry) };
   }
   controller.render(document.getElementById('controller-host'), bindings);
   svgEl = document.querySelector('#controller-host svg.controller');
 }
 
-function kindOf(b) {
-  if (b === 'Unbound' || b === null) return 'unbound';
-  if (typeof b === 'object' && 'Key'   in b) return 'key';
-  if (typeof b === 'object' && 'Macro' in b) return 'macro';
-  return 'unbound';
+// ButtonEntry serialises flattened (rust/src/config.rs ButtonEntry has
+// #[serde(flatten)] over Binding; Binding has #[serde(tag = "type",
+// content = "value", rename_all = "lowercase")]), so an entry looks like:
+//     { label: "Cross", type: "key",     value: "x" }
+//     { label: "L2",    type: "macro",   value: "macro_A" }
+//     { label: "PS",    type: "unbound"                  }
+function kindOf(entry) {
+  return entry?.type ?? 'unbound';
 }
-function valueOf(b) {
-  if (typeof b === 'object' && b !== null && 'Key'   in b) return b.Key;
-  if (typeof b === 'object' && b !== null && 'Macro' in b) return b.Macro;
-  return undefined;
+function valueOf(entry) {
+  return entry?.value;
 }
 
 function hookClick() {
@@ -99,19 +100,19 @@ function renderChipList() {
     const row = document.createElement('div');
     row.className = 'chip-row';
     row.dataset.id = id;
-    const kind = kindOf(entry.binding);
+    const kind = kindOf(entry);
     row.innerHTML = `
       <span class="chip-label">${escape(entry.label)}</span>
-      ${renderChip(entry.binding, kind)}
+      ${renderChip(entry, kind)}
     `;
     row.addEventListener('click', () => openPopup(id));
     host.appendChild(row);
   }
 }
 
-function renderChip(b, kind) {
-  if (kind === 'key')   return `<code class="chip chip-key">${escape(valueOf(b))}</code>`;
-  if (kind === 'macro') return `<code class="chip chip-macro">&#x26A1; ${escape(valueOf(b))}</code>`;
+function renderChip(entry, kind) {
+  if (kind === 'key')   return `<code class="chip chip-key">${escape(valueOf(entry))}</code>`;
+  if (kind === 'macro') return `<code class="chip chip-macro">&#x26A1; ${escape(valueOf(entry))}</code>`;
   return `<span class="chip-mute">unbound</span>`;
 }
 function escape(s) { return String(s).replace(/[<>&]/g, c => ({'<': '&lt;', '>': '&gt;', '&': '&amp;'}[c])); }

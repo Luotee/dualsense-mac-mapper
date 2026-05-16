@@ -622,7 +622,7 @@ async function deleteWithCheck(name) {
       try {
         await invoke('set_binding', {
           id: Number(r.id),
-          entry: { label: r.label, binding: 'Unbound' },
+          entry: { label: r.label, type: 'unbound' },
         });
       } catch (_) { /* best effort */ }
     }
