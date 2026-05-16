@@ -129,15 +129,24 @@ body {
 .tab-content {
   flex: 1;
   padding: 16px;
-  overflow: auto;
+  overflow: hidden;
+  min-height: 0;
 }
 
 .pane {
   display: none;
+  height: 100%;
 }
 
 .pane.active {
   display: block;
+  overflow-y: auto;
+}
+
+/* Mappings pane has its own internal layout — disable pane-level scroll
+   so the controller stays put and only the chip list scrolls. */
+#pane-mappings.active {
+  overflow: hidden;
 }
 
 /* ── Typography utilities ─────────────────────────────────────────────── */
@@ -209,22 +218,45 @@ code {
   to   { transform: scale(1.5); opacity: 0;   }
 }
 
-/* Selection ring: static accent border, no animation */
+/* Selection ring: red dashed halo that sits outside the button so it
+   reads against any binding fill colour (accent / macro / muted). */
 .controller .selection-ring {
   fill: none;
-  stroke: var(--accent);
-  stroke-width: 2.5;
+  stroke: var(--red);
+  stroke-width: 2;
+  stroke-dasharray: 3 2;
   pointer-events: none;
+  vector-effect: non-scaling-stroke;
+  transform-box: fill-box;
+  transform-origin: center;
+  transform: scale(1.55);
 }
 
 /* ── Mappings layout ──────────────────────────────────────────────────────── */
-.mappings-layout { display: grid; grid-template-columns: 1fr 320px; gap: 24px; align-items: start; }
+.mappings-layout {
+  display: grid;
+  grid-template-columns: 1fr 320px;
+  grid-template-rows: 1fr;
+  gap: 24px;
+  height: 100%;
+}
+.mappings-layout > #controller-host {
+  align-self: start;
+  min-width: 0;
+}
 @media (max-width: 880px) {
-  .mappings-layout { grid-template-columns: 1fr; }
+  .mappings-layout { grid-template-columns: 1fr; grid-template-rows: auto 1fr; }
 }
 
 /* ── Chip list ────────────────────────────────────────────────────────────── */
-.chip-list { display: flex; flex-direction: column; gap: 4px; }
+.chip-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-height: 0;
+  overflow-y: auto;
+  padding-right: 4px;
+}
 .chip-row {
   display: flex; justify-content: space-between; align-items: center;
   padding: 7px 10px; background: var(--card); border-radius: 4px;
@@ -238,13 +270,21 @@ code {
 .chip-mute   { color: var(--muted); font-size: 10px; }
 
 /* ── Bind popup ───────────────────────────────────────────────────────────── */
+/* Dock the popup to the right edge so the controller diagram on the left
+   stays fully visible while the user picks a key / macro. The selection
+   ring on the controller is the visual anchor between the two halves. */
 .bind-popup-overlay {
   position: fixed; inset: 0; background: rgba(7,54,66,0.18);
-  display: flex; align-items: center; justify-content: center; z-index: 100;
+  display: flex; align-items: center; justify-content: flex-end;
+  padding: 16px 24px; z-index: 100;
 }
 .bind-popup {
   width: 280px; background: var(--bg); border: 1px solid var(--border);
   border-radius: 8px; padding: 16px; box-shadow: 0 12px 40px rgba(7,54,66,0.20);
+  max-height: calc(100vh - 32px); overflow-y: auto;
+}
+@media (max-width: 720px) {
+  .bind-popup-overlay { justify-content: center; }
 }
 .bp-title { font-size: 14px; color: var(--text-strong); font-weight: 600; }
 .bp-sub   { font-size: 11px; color: var(--muted); margin-bottom: 12px; }
