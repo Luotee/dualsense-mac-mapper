@@ -1,5 +1,6 @@
 import { invoke, listen } from './ipc.js';
 import * as mappings from './mappings.js';
+import * as macros   from './macros.js';
 
 const tabs = ['mappings', 'macros', 'settings'];
 
@@ -28,3 +29,4 @@ await listen('controller-status', s => {
 });
 
 await mappings.init();
+await macros.init();

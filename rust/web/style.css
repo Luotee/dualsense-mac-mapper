@@ -279,3 +279,49 @@ code {
   background: transparent; color: var(--text); font-size: 12px; cursor: pointer;
 }
 .bp-actions .primary { background: var(--accent); color: white; border-color: var(--accent); }
+
+/* ── Macros tab ───────────────────────────────────────────────────────────── */
+.macros-host        { width: 100%; height: 100%; }
+.macros-layout      { display: grid; grid-template-columns: 220px 1fr; gap: 16px; align-items: start; }
+@media (max-width: 880px) { .macros-layout { grid-template-columns: 1fr; } }
+
+.macro-list         { display: flex; flex-direction: column; gap: 6px; }
+.macro-list-head    { display: flex; justify-content: space-between; align-items: center; padding: 0 4px; }
+.macro-items        { display: flex; flex-direction: column; gap: 2px; }
+.macro-row          { display: grid; grid-template-columns: 14px 1fr auto; gap: 6px; align-items: center;
+                      padding: 7px 10px; border-radius: 4px; cursor: pointer; font-size: 12px; }
+.macro-row:hover    { background: var(--card); }
+.macro-row.selected { background: var(--soft); }
+.macro-row .bound-dot     { color: var(--success); font-size: 9px; }
+.macro-row .bound-dot.off { color: var(--muted); }
+.macro-row .m-meta  { font-size: 10px; color: var(--muted); }
+
+.btn-tiny           { padding: 3px 9px; font-size: 11px; border-radius: 3px;
+                      border: 1px solid var(--border-light); background: transparent;
+                      color: var(--accent); cursor: pointer; }
+.btn-tiny:hover     { background: var(--soft); }
+.btn-tiny:disabled  { opacity: 0.45; cursor: default; }
+
+.macro-editor       { padding: 0 8px; }
+.step-table         { width: 100%; border-collapse: collapse; font-size: 12px; }
+.step-table th      { text-align: left; padding: 6px 6px; color: var(--muted);
+                      font-weight: 500; font-size: 10px; text-transform: uppercase; letter-spacing: 0.06em; }
+.step-table td      { padding: 6px 6px; vertical-align: middle; }
+.step-table tr:not(.head) td { background: var(--card); }
+.step-table tr.invalid td   { border-top: 1px solid var(--red); border-bottom: 1px solid var(--red); }
+.step-table input[type="number"] { width: 64px; padding: 3px 6px; font-size: 11px; }
+.step-table .handle { cursor: grab; color: var(--muted); user-select: none; }
+.step-key-cell      { padding: 4px 8px; border: 1px dashed var(--accent); background: var(--soft);
+                      border-radius: 3px; color: var(--accent); cursor: pointer;
+                      font-family: var(--mono); display: inline-block; min-width: 80px; }
+.step-key-cell.capturing { border-style: solid; }
+.step-row-actions   { display: flex; gap: 8px; margin-top: 12px; align-items: center; }
+.step-row-actions .grow { flex: 1; }
+.step-error         { padding: 6px 10px; background: rgba(220,50,47,0.10); color: var(--red);
+                      border-radius: 3px; font-size: 11px; margin-top: 8px; }
+
+.macro-context      { position: fixed; background: var(--bg); border: 1px solid var(--border);
+                      border-radius: 4px; padding: 4px 0; box-shadow: 0 4px 14px rgba(7,54,66,0.18);
+                      z-index: 200; min-width: 120px; font-size: 12px; }
+.macro-context-item { padding: 6px 14px; cursor: pointer; }
+.macro-context-item:hover { background: var(--soft); color: var(--accent); }
