@@ -73,18 +73,29 @@ def _body_polygon():
 
 def draw_pad(size: int, color: str) -> Image.Image:
     """Render the gamepad into an RGBA image of `size x size` with detail
-    hand-tuned per target size."""
+    hand-tuned per target size. The controller's natural viewBox is wide
+    (240×130 aspect 1.85), so naively fitting it by width leaves huge
+    top/bottom padding in a square icon. We render onto an oversize
+    supersampled canvas, then crop the transparent border tight to the
+    controller silhouette and rescale to fill ~92% of the final square
+    — same trick common Windows app icons use to occupy the canvas."""
     SUPER = 4
     s = size * SUPER
-    img = Image.new("RGBA", (s, s), (0, 0, 0, 0))
+    # Use a wider intermediate canvas (square × 1.3) so a 90%-wide
+    # render doesn't get clipped before we crop and rescale.
+    intermediate = int(s * 1.3)
+    img = Image.new("RGBA", (intermediate, intermediate), (0, 0, 0, 0))
     d = ImageDraw.Draw(img)
 
-    # Compute scale / offset to fit the 240×130 viewBox inside `s × s`
-    # with breathing margin. Match aspect by width, centre vertically.
-    margin = 0.06  # 6% breathing room
-    scale = s * (1 - 2 * margin) / GUI_W
-    ox = (s - GUI_W * scale) / 2
-    oy = (s - GUI_H * scale) / 2
+    # Compute scale so the GUI 240×130 viewBox fits the intermediate
+    # canvas width at 95%. The crop-and-rescale step below will then
+    # bring the controller back up to ~92% of the final square's
+    # *shorter* dimension, which on a horizontal silhouette means the
+    # width fills the canvas tightly.
+    margin = 0.025
+    scale = intermediate * (1 - 2 * margin) / GUI_W
+    ox = (intermediate - GUI_W * scale) / 2
+    oy = (intermediate - GUI_H * scale) / 2
 
     def sc(x, y):
         return (ox + x * scale, oy + y * scale)
@@ -107,37 +118,44 @@ def draw_pad(size: int, color: str) -> Image.Image:
     body_pts = [sc(x, y) for x, y in _body_polygon()]
     d.polygon(body_pts, fill=color)
 
-    # 16px: stop here — internal detail turns to mud at that resolution.
-    if size < 24:
+    # Internal detail level depends on the final size. 16px stays a
+    # clean silhouette; 32 adds stick wells and d-pad; 48 adds face
+    # buttons and touchpad; 256 adds PS / Share / Options.
+    if size >= 24:
+        circle(84,  82, 9, (0, 0, 0, 0))
+        circle(156, 82, 9, (0, 0, 0, 0))
+        rect(52, 54, 14, 5, (0, 0, 0, 0), radius=1)   # d-pad horiz arm
+        rect(57, 49,  4, 14, (0, 0, 0, 0), radius=1)  # d-pad vert arm
+    if size >= 40:
+        for cx, cy in [(184, 50), (192, 58), (184, 66), (176, 58)]:
+            circle(cx, cy, 4, (0, 0, 0, 0))
+        rect(101, 36, 38, 16, (0, 0, 0, 0), radius=5)  # touchpad
+    if size >= 96:
+        circle(120, 62, 3, (0, 0, 0, 0))               # PS button
+        rect(82,  38, 7, 3, (0, 0, 0, 0), radius=1)    # Share
+        rect(151, 38, 7, 3, (0, 0, 0, 0), radius=1)    # Options
+
+    # ── Crop transparent border and rescale to fill ~92% of canvas ──
+    # Without this step a wide-aspect controller leaves big empty bands
+    # top/bottom in a square ICO. Tight-crop the alpha bbox and resize
+    # so the silhouette's longer dimension fills the target square.
+    bbox = img.getbbox()
+    if bbox is None:
         return img.resize((size, size), Image.LANCZOS)
-
-    # ── Stick wells (2 transparent circles) — keep at 32+ ──
-    circle(84,  82, 9, (0, 0, 0, 0))
-    circle(156, 82, 9, (0, 0, 0, 0))
-
-    # ── D-pad cross (2 transparent rects forming a +) — keep at 32+ ──
-    rect(52, 54, 14, 5, (0, 0, 0, 0), radius=1)   # horiz arm
-    rect(57, 49,  4, 14, (0, 0, 0, 0), radius=1)  # vert arm
-
-    if size < 40:
-        return img.resize((size, size), Image.LANCZOS)
-
-    # ── Face button diamond (4 transparent dots) — 48+ ──
-    for cx, cy in [(184, 50), (192, 58), (184, 66), (176, 58)]:
-        circle(cx, cy, 4, (0, 0, 0, 0))
-
-    # ── Touchpad notch (transparent rect) — 48+ ──
-    rect(101, 36, 38, 16, (0, 0, 0, 0), radius=5)
-
-    if size < 96:
-        return img.resize((size, size), Image.LANCZOS)
-
-    # ── 256-only fine detail: PS + Share / Options markers ──
-    circle(120, 62, 3, (0, 0, 0, 0))                # PS button
-    rect(82,  38, 7, 3, (0, 0, 0, 0), radius=1)     # Share
-    rect(151, 38, 7, 3, (0, 0, 0, 0), radius=1)     # Options
-
-    return img.resize((size, size), Image.LANCZOS)
+    cropped = img.crop(bbox)
+    target = int(size * 0.94)
+    cw, ch = cropped.size
+    ratio = target / max(cw, ch)
+    new_size = (max(1, int(round(cw * ratio))),
+                max(1, int(round(ch * ratio))))
+    scaled = cropped.resize(new_size, Image.LANCZOS)
+    final = Image.new("RGBA", (size, size), (0, 0, 0, 0))
+    final.paste(
+        scaled,
+        ((size - new_size[0]) // 2, (size - new_size[1]) // 2),
+        scaled,
+    )
+    return final
 
 
 def write_ico(path: Path, color: str, sizes: list[int]) -> None:

@@ -3,6 +3,26 @@
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/);
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.5] - 2026-05-17
+
+### Changed
+
+- **Icon assets fill the canvas.** v1.0.4's ICOs left big empty bands
+  above and below the controller because the source SVG viewBox is
+  240×130 (wide-aspect 1.85) and was being fitted by width into the
+  square ICO. `scripts/build_icons.py` now tight-crops the rendered
+  silhouette's alpha bounding box and rescales the result to fill
+  ~94% of the target square, so the controller occupies the icon at
+  every resolution — same trick common Windows app icons use.
+- **Drop "Esc cancels" hint from the bind popup's key-capture box.**
+  Esc didn't actually cancel in v1.0.2..v1.0.4 (the popup-root
+  handler doesn't fire from inside the focused capture box on every
+  WebView2 build), and the user has Unbound as an explicit cancel
+  path anyway. The hint text was misleading — removed for now until
+  Esc handling is repaired.
+
+[1.0.5]: https://github.com/Luotee/dualsense-mac-mapper/releases/tag/v1.0.5
+
 ## [1.0.4] - 2026-05-17
 
 ### Changed
