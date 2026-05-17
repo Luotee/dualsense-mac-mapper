@@ -44,6 +44,18 @@ export async function init() {
   }, 1000);
 }
 
+// Generic modifier names in the config (e.g. "Alt", "Shift", "Control")
+// expand to both side-specific physical keys, since `resolveKeyName`
+// always reports the side a physical press came from ("LAlt", never
+// plain "Alt"). All lookup keys are stored lowercase so a hand-edited
+// config with "lalt" or "LALT" still matches.
+const MOD_ALIASES_LOWER = {
+  'alt':     ['lalt', 'ralt'],
+  'shift':   ['lshift', 'rshift'],
+  'control': ['lcontrol', 'rcontrol'],
+  'ctrl':    ['lcontrol', 'rcontrol'],
+};
+
 async function refresh() {
   try {
     const cfg = await invoke('get_config');
@@ -51,9 +63,13 @@ async function refresh() {
     const k = new Map();
     for (const [id, entry] of Object.entries(cfg.buttons || {})) {
       if (entry?.type !== 'key' || !entry?.value) continue;
-      const arr = m.get(entry.value) || [];
-      arr.push(Number(id));
-      m.set(entry.value, arr);
+      const lower = entry.value.toLowerCase();
+      const lookupKeys = MOD_ALIASES_LOWER[lower] || [lower];
+      for (const lk of lookupKeys) {
+        const arr = m.get(lk) || [];
+        arr.push(Number(id));
+        m.set(lk, arr);
+      }
       k.set(Number(id), entry.value);
     }
     bindingsByKey = m;
@@ -77,8 +93,9 @@ function shouldSkip(ev) {
 
 function onKeyDown(ev) {
   if (shouldSkip(ev)) return;
-  const name = resolveKeyName(ev);
-  if (!name) return;
+  const raw = resolveKeyName(ev);
+  if (!raw) return;
+  const name = raw.toLowerCase();
   const prev = pendingKeyDowns.get(name);
   if (prev) clearTimeout(prev);
   const t = setTimeout(() => {
@@ -100,8 +117,9 @@ function onKeyDown(ev) {
 }
 
 function onKeyUp(ev) {
-  const name = resolveKeyName(ev);
-  if (!name) return;
+  const raw = resolveKeyName(ev);
+  if (!raw) return;
+  const name = raw.toLowerCase();
   // Cancel any pending mirror if the key was released before the defer fired.
   const pending = pendingKeyDowns.get(name);
   if (pending) { clearTimeout(pending); pendingKeyDowns.delete(name); }
