@@ -128,6 +128,30 @@ regresses real, observed bugs the codebase already fixed once:
    is the only authorised path from frontend to engine — adding
    business logic to the frontend that bypasses it is a regression
    even if the feature works in isolation.
+10. **Any IPC command that mutates `config` MUST emit
+    `config-changed` itself on success.** The filesystem watcher
+    in `runtime.rs` is the second source of truth, kept around
+    for external edits (Notepad while the GUI is running). It is
+    NOT a reliable refresh path for IPC-driven writes because
+    `notify-rs` on Windows loses the watch handle across the
+    atomic-rename used by `write_atomic` — every IPC mutator
+    after the first would otherwise silently appear to do
+    nothing. See v1.2.0 commits for the bug shape.
+11. **Controller "Connected" status requires evidence of real
+    input.** gilrs on Windows lies about DualSense BT
+    connection state — `EventType::Connected` fires at app
+    startup for every pad in the OS pairing list (whether
+    actually transmitting or not), and `is_connected()` stays
+    cached as `true` after a PS-button-hold power-off because
+    no `Disconnected` event ever fires. v1.2.0 keeps the Connected
+    state machine in `gamepad::GamepadSource::poll` gated on
+    `connection_armed`, which only flips true after a real
+    Button/Axis event arrives. The periodic `is_connected()`
+    poll runs only after armed, as a best-effort disconnect
+    detector; on user machines where gilrs caches it
+    permanently it does nothing useful. v1.3 replaces this with
+    raw HID via `hidapi-rs` so connection state, touchpad, IMU
+    and battery come from the 78-byte HID report directly.
 
 ## Anti-cheat self-discipline
 

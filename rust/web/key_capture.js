@@ -52,3 +52,44 @@ export function normaliseKeyEvent(ev) {
 
   return { reject: `Unsupported key "${ev.key}".` };
 }
+
+// Non-mutating variant of normaliseKeyEvent — returns the same canonical
+// name but does NOT call preventDefault/stopPropagation, so it is safe to
+// run on every document keydown (including events targeted at form fields).
+//
+// Returns the canonical key name (string) or `null` if the event is not a
+// supported binding key. The keyboard-mirror feature uses this to look up
+// `bindingsByKey` without disrupting normal input.
+export function resolveKeyName(ev) {
+  if (ev.key === 'Escape') return null;
+
+  if (ev.key === 'Shift')   return ev.code === 'ShiftRight'   ? 'RShift'   : 'LShift';
+  if (ev.key === 'Control') return ev.code === 'ControlRight' ? 'RControl' : 'LControl';
+  if (ev.key === 'Alt')     return ev.code === 'AltRight'     ? 'RAlt'     : 'LAlt';
+  if (ev.key === 'Meta')    return 'Meta';
+
+  if (/^F\d+$/.test(ev.key)) {
+    const n = parseInt(ev.key.slice(1), 10);
+    if (n >= 1 && n <= 12) return ev.key;
+  }
+
+  if (ev.code === 'ArrowUp')    return 'Up';
+  if (ev.code === 'ArrowDown')  return 'Down';
+  if (ev.code === 'ArrowLeft')  return 'Left';
+  if (ev.code === 'ArrowRight') return 'Right';
+
+  if (ev.key === ' ' || ev.code === 'Space') return 'Space';
+
+  const named = ['Enter', 'Return', 'Tab', 'Backspace', 'Delete', 'Del',
+                 'Home', 'End', 'PageUp', 'PageDown'];
+  if (named.includes(ev.key)) return ev.key;
+
+  if (ev.key.length === 1) {
+    const c = ev.key.charCodeAt(0);
+    if (c >= 0x20 && c <= 0x7E) {
+      return /[A-Z]/.test(ev.key) ? ev.key.toLowerCase() : ev.key;
+    }
+  }
+
+  return null;
+}

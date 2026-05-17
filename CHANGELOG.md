@@ -3,6 +3,77 @@
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/);
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.0] - 2026-05-17
+
+### Fixed
+
+- **Macro tab actions appeared to do nothing.** `+ New`, `+ Step`,
+  per-row key capture and right-click Delete all relied on the
+  filesystem watcher to emit `config-changed` after a write. On
+  Windows, `notify-rs` loses the watch handle across
+  `write_atomic`'s temp + rename, so the second write onwards was
+  silent and the UI never refreshed. Every IPC mutator
+  (`set_binding`, `set_macro`, `delete_macro`, `rename_macro`,
+  `set_settings`, `reset_settings`) now emits `config-changed`
+  itself on success.
+- **Settings → About read `v0.2.0`** while the binary was at
+  v1.1.4. New `get_app_version` IPC returns
+  `env!("CARGO_PKG_VERSION")`; the About box reads it on init.
+- **Controller status no longer shows "Connected" for a paired
+  but powered-off pad.** gilrs on Windows enumerates the OS
+  pairing list and reports cached `is_connected()` as `true`
+  for pads that are not actually transmitting; v1.1.x trusted
+  that signal blindly. The Connected status now requires at
+  least one real input event (button / stick / trigger) — a
+  paired-but-silent pad keeps the GUI in "Waiting".
+- **Settings → About links now open in the system browser.**
+  Tauri CSP `default-src 'self'` was blocking `<a target="_blank">`
+  silently. New `open_url` IPC command routes anchor clicks
+  through `cmd /c start` on Windows.
+- **Single-file Windows binary.** Switched cross-compile target
+  from `x86_64-pc-windows-gnu` to `x86_64-pc-windows-msvc` via
+  `cargo-xwin` + `WEBVIEW2_STATIC=true`. WebView2Loader is now
+  statically linked — no more `WebView2Loader.dll` next to the
+  exe. Ship is `dualsense-mapper.exe` (~11 MB) + a sample
+  `dualsense-mapper.json`.
+
+### Added
+
+- **Keyboard → button focus mirror.** Pressing a key bound to a
+  controller button while the GUI window is focused triggers the
+  same yellow flash on the matching button. Releasing the key
+  clears it. Suppressed while a bind popup / macro step capture
+  is active, and while focus is inside form fields.
+
+### Known limitations (planned for v1.3)
+
+- **Real-time connection state for BT pads is best-effort.**
+  gilrs `EventType::Disconnected` does not fire on Windows when
+  a DualSense is powered off via PS-button-hold; `is_connected()`
+  stays cached as `true`. The user-facing impact: after a clean
+  pad shutdown the status indicator may remain stuck on
+  "Connected" until something else triggers a re-evaluation.
+  Workaround for now: press any key on the pad to confirm. v1.3
+  will replace the gilrs path for DualSense pads with a raw HID
+  reader (`hidapi-rs`) so connection state, touchpad, IMU and
+  battery are read directly from the 78-byte HID report.
+
+### Iron rules
+
+- 10. Any IPC command that mutates `config` must emit
+  `config-changed` itself on success; the filesystem watcher is
+  the second source of truth, not the only one.
+- 11. Controller connection state must require evidence of real
+  input — gilrs's `EventType::Connected` / `is_connected()` lie
+  on Windows for paired-but-silent BT pads. The current
+  `GamepadSource::poll` only emits Connected once it has seen
+  a Button or Axis event for the session; the periodic
+  `is_connected()` re-scan exists only as the post-armed
+  disconnect detector, and is known to be incomplete (see
+  Known limitations).
+
+[1.2.0]: https://github.com/Luotee/dualsense-mac-mapper/releases/tag/v1.2.0
+
 ## [1.1.4] - 2026-05-17
 
 ### Fixed

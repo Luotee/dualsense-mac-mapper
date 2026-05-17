@@ -116,6 +116,8 @@ pub fn run(cfg: Config, opts: RunOptions) -> Result<()> {
             crate::gui::commands::get_controller_status,
             crate::gui::commands::get_ui_prefs,
             crate::gui::commands::set_ui_prefs,
+            crate::gui::commands::get_app_version,
+            crate::gui::commands::open_url,
         ])
         .manage(handle_for_state)
         .manage(opts.config_path.clone())

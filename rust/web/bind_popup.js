@@ -1,5 +1,6 @@
 import { invoke } from './ipc.js';
 import { normaliseKeyEvent } from './key_capture.js';
+import { setCaptureActive } from './capture_state.js';
 
 // Open a modal popup to edit one button binding. `options`:
 //   id        : number
@@ -102,10 +103,10 @@ export function open(options) {
       };
       box.addEventListener('keydown', onKey);
       box.addEventListener('focus', () => {
-        invoke('set_capture_active', { active: true }).catch(() => {});
+        setCaptureActive(true);
       });
       box.addEventListener('blur', () => {
-        invoke('set_capture_active', { active: false }).catch(() => {});
+        setCaptureActive(false);
       });
       // Auto-focus so the user doesn't have to click the box first.
       setTimeout(() => box.focus(), 0);
@@ -149,7 +150,7 @@ export function open(options) {
   });
 
   root.querySelector('.bp-cancel').addEventListener('click', () => {
-    invoke('set_capture_active', { active: false }).catch(() => {});
+    setCaptureActive(false);
     close();
   });
 
@@ -174,7 +175,7 @@ export function open(options) {
       return;
     }
 
-    invoke('set_capture_active', { active: false }).catch(() => {});
+    setCaptureActive(false);
     options.onSaved?.();
     close();
   });
@@ -187,7 +188,7 @@ export function open(options) {
   // Esc dismisses the popup as a whole
   root.addEventListener('keydown', ev => {
     if (ev.key === 'Escape') {
-      invoke('set_capture_active', { active: false }).catch(() => {});
+      setCaptureActive(false);
       close();
     }
   });

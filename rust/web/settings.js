@@ -1,11 +1,15 @@
 import { invoke, listen } from './ipc.js';
 
 let current = null;   // the Settings struct as loaded from get_config
-
-const APP_VERSION = '0.2.0';
+let appVersion = '';  // populated from `get_app_version` on init
 
 export async function init() {
   await reload();
+  try {
+    appVersion = await invoke('get_app_version');
+  } catch (_) {
+    appVersion = '?';
+  }
   render();
   listen('config-changed', async () => { await reload(); render(); });
 }
@@ -83,7 +87,7 @@ function render() {
     <div class="settings-about">
       <h4>About</h4>
       <p>
-        <strong>DualSense Mapper</strong> v${APP_VERSION}<br>
+        <strong>DualSense Mapper</strong> v${appVersion}<br>
         Built with <a href="https://tauri.app/" target="_blank" rel="noreferrer">Tauri</a>.
         See the <a href="https://github.com/Luotee/dualsense-mac-mapper/releases" target="_blank" rel="noreferrer">GitHub releases</a> for changelog and updates.
       </p>
@@ -94,6 +98,21 @@ function render() {
   pane.querySelector('#btn-save').addEventListener('click', save);
   pane.querySelector('#btn-reset').addEventListener('click', resetDefaults);
   pane.querySelector('#btn-open-cfg').addEventListener('click', openInEditor);
+
+  // CSP default-src 'self' + no shell plugin means <a target="_blank">
+  // does nothing on click. Intercept and route through open_url IPC.
+  for (const a of pane.querySelectorAll('a[href^="http"]')) {
+    a.addEventListener('click', ev => {
+      ev.preventDefault();
+      invoke('open_url', { url: a.href }).catch(e => {
+        const errorEl = document.querySelector('.settings-error');
+        if (errorEl) {
+          errorEl.textContent = `Open link failed: ${e}`;
+          errorEl.hidden = false;
+        }
+      });
+    });
+  }
 }
 
 async function save() {

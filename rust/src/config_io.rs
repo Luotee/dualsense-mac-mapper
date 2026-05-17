@@ -27,6 +27,15 @@ impl ConfigDoc {
         Ok(Self { raw, typed })
     }
 
+    /// Build a `ConfigDoc` from an already-typed value tree. Used by tests
+    /// that seed a known config without touching the filesystem first.
+    pub fn load_from_value(raw: Value) -> Result<Self> {
+        let typed: Config =
+            serde_json::from_value(raw.clone()).context("typed-parsing in-memory config")?;
+        typed.validate()?;
+        Ok(Self { raw, typed })
+    }
+
     pub fn typed(&self) -> &Config {
         &self.typed
     }
