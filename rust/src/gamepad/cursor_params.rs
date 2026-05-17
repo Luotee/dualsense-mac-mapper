@@ -20,6 +20,25 @@ pub struct CursorParams {
     midpoint_x: Arc<AtomicU16>,
     /// Y coordinate that splits TL/TR vs BL/BR. Defaults to 540.
     midpoint_y: Arc<AtomicU16>,
+    /// Raw px/frame threshold below which the accel curve uses
+    /// `accel_gain_slow` for precision. Default 5.
+    accel_slow_threshold: Arc<AtomicU32>,
+    /// Raw px/frame threshold above which the accel curve uses
+    /// `accel_gain_fast` for flick acceleration. Default 20.
+    accel_fast_threshold: Arc<AtomicU32>,
+    /// Acceleration gain at and below `accel_slow_threshold`,
+    /// stored ×100 so the AtomicU32 holds 2-decimal precision.
+    /// Default 50 (= 0.50).
+    accel_gain_slow_x100: Arc<AtomicU32>,
+    /// Acceleration gain at and above `accel_fast_threshold`,
+    /// stored ×100. Default 150 (= 1.50).
+    accel_gain_fast_x100: Arc<AtomicU32>,
+    /// Raw px deadzone radius. Per-frame |Δ| below this is silently
+    /// dropped for 3 consecutive frames. Default 2.
+    deadzone_radius: Arc<AtomicU32>,
+    /// When true, suppress all cursor deltas while the touchpad click
+    /// button is held down. Default true. See Issue 8 click-drift.
+    click_freeze_enabled: Arc<AtomicBool>,
 }
 
 impl CursorParams {
@@ -33,6 +52,12 @@ impl CursorParams {
             enabled: Arc::new(AtomicBool::new(enabled)),
             midpoint_x: Arc::new(AtomicU16::new(mid_x)),
             midpoint_y: Arc::new(AtomicU16::new(mid_y)),
+            accel_slow_threshold: Arc::new(AtomicU32::new(5)),
+            accel_fast_threshold: Arc::new(AtomicU32::new(20)),
+            accel_gain_slow_x100: Arc::new(AtomicU32::new(50)),    // 0.50
+            accel_gain_fast_x100: Arc::new(AtomicU32::new(150)),   // 1.50
+            deadzone_radius: Arc::new(AtomicU32::new(2)),
+            click_freeze_enabled: Arc::new(AtomicBool::new(true)),
         }
     }
 
@@ -57,6 +82,43 @@ impl CursorParams {
 
     pub fn set_midpoint_x(&self, v: u16) { self.midpoint_x.store(v, Ordering::Relaxed); }
     pub fn set_midpoint_y(&self, v: u16) { self.midpoint_y.store(v, Ordering::Relaxed); }
+
+    pub fn accel_slow_threshold(&self) -> u32 {
+        self.accel_slow_threshold.load(Ordering::Relaxed)
+    }
+    pub fn set_accel_slow_threshold(&self, v: u32) {
+        self.accel_slow_threshold.store(v, Ordering::Relaxed);
+    }
+    pub fn accel_fast_threshold(&self) -> u32 {
+        self.accel_fast_threshold.load(Ordering::Relaxed)
+    }
+    pub fn set_accel_fast_threshold(&self, v: u32) {
+        self.accel_fast_threshold.store(v, Ordering::Relaxed);
+    }
+    pub fn accel_gain_slow(&self) -> f32 {
+        self.accel_gain_slow_x100.load(Ordering::Relaxed) as f32 / 100.0
+    }
+    pub fn set_accel_gain_slow(&self, v: f32) {
+        self.accel_gain_slow_x100.store((v * 100.0) as u32, Ordering::Relaxed);
+    }
+    pub fn accel_gain_fast(&self) -> f32 {
+        self.accel_gain_fast_x100.load(Ordering::Relaxed) as f32 / 100.0
+    }
+    pub fn set_accel_gain_fast(&self, v: f32) {
+        self.accel_gain_fast_x100.store((v * 100.0) as u32, Ordering::Relaxed);
+    }
+    pub fn deadzone_radius(&self) -> u32 {
+        self.deadzone_radius.load(Ordering::Relaxed)
+    }
+    pub fn set_deadzone_radius(&self, v: u32) {
+        self.deadzone_radius.store(v, Ordering::Relaxed);
+    }
+    pub fn click_freeze_enabled(&self) -> bool {
+        self.click_freeze_enabled.load(Ordering::Relaxed)
+    }
+    pub fn set_click_freeze_enabled(&self, v: bool) {
+        self.click_freeze_enabled.store(v, Ordering::Relaxed);
+    }
 }
 
 impl Default for CursorParams {
