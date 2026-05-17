@@ -14,16 +14,16 @@ fn neutral_report() -> Vec<u8> {
     buf[4] = 128;
     buf[5] = 128;
     buf[9] = 0x08;  // hat = released
-    buf[33] = 0x80; // finger 0 inactive
-    buf[37] = 0x80; // finger 1 inactive
+    buf[34] = 0x80; // finger 0 inactive (BT 0x31 offset, see ds_protocol)
+    buf[38] = 0x80; // finger 1 inactive
     buf
 }
 
 fn finger_at(buf: &mut [u8], x: u16, y: u16) {
-    buf[33] = 0x00; // active=1 (high bit clear), id=0
-    buf[34] = (x & 0xFF) as u8;
-    buf[35] = ((x >> 8) as u8 & 0x0F) | (((y & 0x0F) as u8) << 4);
-    buf[36] = (y >> 4) as u8;
+    buf[34] = 0x00; // active=1 (high bit clear), id=0
+    buf[35] = (x & 0xFF) as u8;
+    buf[36] = ((x >> 8) as u8 & 0x0F) | (((y & 0x0F) as u8) << 4);
+    buf[37] = (y >> 4) as u8;
 }
 
 #[test]
@@ -103,6 +103,44 @@ fn cursor_jitter_floor_drops_one_pixel_motion() {
     src.poll(&mut out);
     assert!(!out.iter().any(|e| matches!(e, GamepadEvent::MouseDelta { .. })),
         "1px motion must be filtered: {out:?}");
+}
+
+#[test]
+fn cursor_teleport_guard_suppresses_huge_jump() {
+    // Reproduces v2.1.0 first-touch bug: DualSense reports one stale
+    // frame on touch-down where `active` is true but x/y still carry
+    // the previous touch's coordinates. The decoder sees a delta of
+    // hundreds-to-thousands of raw px between frame N and frame N+1,
+    // and without the guard would synthesise a screen-spanning jump.
+    let (tx, rx) = unbounded::<Vec<u8>>();
+    let mut src = HidSource::new_from_byte_stream(rx);
+
+    // Frame 1: finger at far-corner stale coords (1800, 1000).
+    // Frame 2: finger at fresh-touch coords (100, 100).
+    //   Raw delta = (-1700, -900) → both well over CURSOR_TELEPORT_GUARD.
+    // Frame 3: finger moves a believable amount, (130, 120).
+    //   Delta from frame 2 = (+30, +20) → MouseDelta should fire here.
+    let mut a = neutral_report();
+    finger_at(&mut a, 1800, 1000);
+    let mut b = neutral_report();
+    finger_at(&mut b, 100, 100);
+    let mut c = neutral_report();
+    finger_at(&mut c, 130, 120);
+    tx.send(a).unwrap();
+    tx.send(b).unwrap();
+    tx.send(c).unwrap();
+    std::thread::sleep(std::time::Duration::from_millis(100));
+
+    let mut out = Vec::new();
+    src.poll(&mut out);
+    let deltas: Vec<_> = out.iter().filter_map(|e| match e {
+        GamepadEvent::MouseDelta { dx, dy } => Some((*dx, *dy)),
+        _ => None,
+    }).collect();
+    assert_eq!(deltas.len(), 1,
+        "expected exactly one MouseDelta after teleport guard, got {deltas:?}");
+    let (dx, dy) = deltas[0];
+    assert_eq!((dx, dy), ((30.0 * 1.5) as i32, (20.0 * 1.5) as i32));
 }
 
 #[test]

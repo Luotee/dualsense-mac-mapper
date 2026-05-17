@@ -85,12 +85,20 @@ pub fn decode_31(buf: &[u8]) -> Option<DsState> {
     // Touchpad whole-pad click switch — buttons[2] bit 1.
     s.touchpad_btn = (b2 >> 1) & 1 == 1;
 
-    // Touchpad finger 0 — bytes 33..=36.
-    //   byte 33: high bit = "no contact" flag; low 7 bits = touch id
-    //   byte 34: x[7..0]
-    //   byte 35: low nibble = x[11..8], high nibble = y[3..0]
-    //   byte 36: y[11..4]
-    let f0 = &buf[33..=36];
+    // Touchpad finger 0 — bytes 34..=37 in the BT 0x31 report.
+    //
+    // USB report 0x01 lays finger 0 at bytes 33..=36; BT 0x31 inserts
+    // a sub-id byte at offset 1 so every payload byte shifts +1 (same
+    // shift that puts stick_lx at buf[2] / buttons0 at buf[9]). v2.1.0
+    // initially used the USB offsets here — the result was cursor
+    // jitter from random gyro / timestamp data and wrong quadrant
+    // ids at click-down. Always use the BT-relative offsets.
+    //
+    //   byte 34: high bit = "no contact" flag; low 7 bits = touch id
+    //   byte 35: x[7..0]
+    //   byte 36: low nibble = x[11..8], high nibble = y[3..0]
+    //   byte 37: y[11..4]
+    let f0 = &buf[34..=37];
     s.finger0_active = (f0[0] & 0x80) == 0;
     let x_lo = f0[1] as u16;
     let x_hi = (f0[2] & 0x0F) as u16;
@@ -132,9 +140,9 @@ mod tests {
         buf[3] = 128;
         buf[4] = 128;
         buf[5] = 128;
-        buf[9] = 0x08; // hat = released, no buttons in byte 9 upper nibble
-        buf[33] = 0x80; // touchpad finger 0 inactive (high bit = "no contact")
-        buf[37] = 0x80; // touchpad finger 1 inactive (decoded but ignored in v2.1)
+        buf[9] = 0x08;  // hat = released, no buttons in byte 9 upper nibble
+        buf[34] = 0x80; // touchpad finger 0 inactive (high bit = "no contact")
+        buf[38] = 0x80; // touchpad finger 1 inactive (decoded but ignored in v2.1)
         buf
     }
 
@@ -216,12 +224,12 @@ mod tests {
     fn decode_touchpad_finger0_active_position() {
         let mut buf = neutral_report();
         // active=1 (high bit clear), id=0
-        buf[33] = 0x00;
+        buf[34] = 0x00;
         // x = 1500 = 0x5DC → x_low_8 = 0xDC, x_high_4 = 0x5
         // y = 800  = 0x320 → y_low_4 = 0x0, y_high_8 = 0x32
-        buf[34] = 0xDC;
-        buf[35] = 0x05 | (0x0 << 4);
-        buf[36] = 0x32;
+        buf[35] = 0xDC;
+        buf[36] = 0x05 | (0x0 << 4);
+        buf[37] = 0x32;
         let s = decode_31(&buf).unwrap();
         assert!(s.finger0_active);
         assert_eq!(s.finger0_x, 1500);

@@ -27,6 +27,14 @@ const TOUCHPAD_Y_MID: u16 = 540;
 /// Drop sub-2-pixel motion so a resting finger doesn't synthesise a
 /// drift. Anything strictly greater than this gets emitted.
 const CURSOR_JITTER_FLOOR: i32 = 1;
+/// Per-frame raw-coordinate delta upper bound. A real finger at 250 Hz
+/// frame rate over the 1920-wide pad cannot move more than ~150 raw px
+/// in one frame. Larger jumps come from the DualSense reporting one
+/// stale (pre-touch) frame at touch-down — the very first contact
+/// frame can carry the x/y of the previous touch even though `active`
+/// has flipped to true. We re-anchor on these without emitting so the
+/// cursor stays still rather than teleporting halfway across the screen.
+const CURSOR_TELEPORT_GUARD: i32 = 250;
 /// Button ids 25..=28 = Touchpad TL/TR/BL/BR. Matches
 /// `config::TOUCHPAD_QUADRANT_IDS`; duplicated here to avoid pulling
 /// the config crate into the gamepad layer.
@@ -70,16 +78,23 @@ fn process_touchpad(
             Some((lx, ly)) => {
                 let dx_raw = cur.finger0_x as i32 - lx as i32;
                 let dy_raw = cur.finger0_y as i32 - ly as i32;
-                let moved = dx_raw.abs() > CURSOR_JITTER_FLOOR
-                    || dy_raw.abs() > CURSOR_JITTER_FLOOR;
-                if moved {
-                    if params.enabled() {
-                        let s = params.sensitivity();
-                        let dx = (dx_raw as f32 * s) as i32;
-                        let dy = (dy_raw as f32 * s) as i32;
-                        let _ = tx.send(GamepadEvent::MouseDelta { dx, dy });
-                    }
+                if dx_raw.abs() > CURSOR_TELEPORT_GUARD
+                    || dy_raw.abs() > CURSOR_TELEPORT_GUARD
+                {
+                    // Stale touch-down frame — re-anchor silently.
                     state.last_finger_pos = Some((cur.finger0_x, cur.finger0_y));
+                } else {
+                    let moved = dx_raw.abs() > CURSOR_JITTER_FLOOR
+                        || dy_raw.abs() > CURSOR_JITTER_FLOOR;
+                    if moved {
+                        if params.enabled() {
+                            let s = params.sensitivity();
+                            let dx = (dx_raw as f32 * s) as i32;
+                            let dy = (dy_raw as f32 * s) as i32;
+                            let _ = tx.send(GamepadEvent::MouseDelta { dx, dy });
+                        }
+                        state.last_finger_pos = Some((cur.finger0_x, cur.finger0_y));
+                    }
                 }
             }
         }
