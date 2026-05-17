@@ -19,11 +19,18 @@ export const R1_RECT = { x: 163.97, y: 14.48, w: 20.1, h: 5.98, rx: 2 };
 export const L2_RECT = { x: 56.16, y: 7.0, w: 20.22, h: 5.98, rx: 2 };
 export const R2_RECT = { x: 163.97, y: 7.0, w: 20.1, h: 5.98, rx: 2 };
 
-// Touchpad outer surface (traced)
+// Touchpad — bbox is used for raw-coord → pixel mapping in
+// the cursor + hover code; the PATH is what gets rendered so
+// the trapezoidal light-bar shape from the line drawing is
+// preserved (bbox alone collapsed it to a flat rectangle).
 export const TOUCHPAD = { x: 84.52, y: 16.03, w: 71.08, h: 33.62, rx: 4 };
+export const TOUCHPAD_OUTER_PATH =
+  'M 85.18 19.15 Q 84.76 19.86 84.64 20.34 Q 84.52 20.82 84.58 21.66 Q 84.64 22.50 87.03 33.56 Q 89.43 44.63 89.85 45.47 Q 90.26 46.31 91.04 47.15 Q 91.82 47.98 92.78 48.52 Q 93.74 49.06 94.81 49.30 Q 95.89 49.54 119.94 49.54 Q 143.99 49.54 145.13 49.30 Q 146.26 49.06 147.34 48.40 Q 148.42 47.74 149.44 46.37 Q 150.45 44.99 152.97 33.62 Q 155.48 22.26 155.36 20.94 Q 155.24 19.62 155.00 19.21 Q 154.76 18.79 153.92 18.07 Q 153.09 17.35 152.07 17.11 Q 151.05 16.87 146.32 16.57 Q 141.60 16.27 126.88 16.15 Q 112.16 16.03 100.14 16.51 Q 88.11 16.99 87.45 17.23 Q 86.79 17.47 86.20 17.95 Q 85.60 18.43 85.18 19.15 Z';
 
-// Light bar seam — the inner-line of the touchpad surround
+// Light bar seam — traced inner-line of the touchpad surround
 export const LIGHT_BAR_INNER = { x: 84.88, y: 16.39, w: 70.48, h: 32.91, rx: 3 };
+export const LIGHT_BAR_INNER_PATH =
+  'M 85.00 20.88 Q 85.12 19.86 85.36 19.44 Q 85.60 19.03 86.26 18.43 Q 86.91 17.83 87.51 17.59 Q 88.11 17.35 89.37 17.23 Q 90.62 17.11 101.69 16.75 Q 112.76 16.39 125.56 16.45 Q 138.37 16.51 142.85 16.69 Q 147.34 16.87 149.91 17.17 Q 152.49 17.47 153.50 18.25 Q 154.52 19.03 154.82 19.68 Q 155.12 20.34 155.18 21.00 Q 155.24 21.66 152.85 32.85 Q 150.45 44.03 149.91 45.11 Q 149.38 46.19 148.54 47.03 Q 147.70 47.86 146.98 48.28 Q 146.26 48.70 145.43 48.94 Q 144.59 49.18 119.94 49.18 Q 95.29 49.18 94.63 49.00 Q 93.97 48.82 93.02 48.28 Q 92.06 47.74 91.46 47.15 Q 90.86 46.55 90.38 45.77 Q 89.91 44.99 87.39 33.44 Q 84.88 21.90 85.00 20.88 Z';
 
 // D-pad arms — 4 traced pentagon paths, one per direction
 export const DPAD_ARM_PATHS = {
