@@ -9,7 +9,7 @@
 //!   * `EngineEvent` — what the loop emits for the activity log.
 
 use crate::config::Config;
-use crate::gamepad::GamepadSource;
+use crate::gamepad::{CursorParams, GamepadSource};
 use crate::keyboard::KeyboardSink;
 use crate::macro_engine::MacroEngine;
 use crate::mapper::{KeyAction, Mapper};
@@ -89,6 +89,10 @@ struct HandleInner {
     /// Test-only: sender for the fake gamepad source. `None` in production.
     #[doc(hidden)]
     fake_tx: Mutex<Option<crossbeam_channel::Sender<crate::gamepad::GamepadEvent>>>,
+    /// Live touchpad cursor parameters, shared with the HID worker.
+    /// `set_settings` mutates these through the handle so changes take
+    /// effect on the next decoded frame without rebuilding the engine.
+    cursor_params: CursorParams,
 }
 
 // ─── Handle (GUI-side) ───────────────────────────────────────────────────────
@@ -99,6 +103,13 @@ pub struct Handle {
 }
 
 impl Handle {
+    /// Live touchpad cursor parameters. The HID worker reads through
+    /// this every frame; `set_settings` writes through it on the
+    /// engine thread so changes take effect without a config rebuild.
+    pub fn cursor_params(&self) -> CursorParams {
+        self.inner.cursor_params.clone()
+    }
+
     pub fn set_paused(&self, v: bool) {
         self.inner.paused.store(v, Ordering::SeqCst);
     }
@@ -181,8 +192,12 @@ pub struct Engine {
 impl Engine {
     /// Spawn with a real gamepad source.
     pub fn spawn(cfg: Config, dry_run: bool) -> Result<Self> {
-        let src = GamepadSource::new()?;
-        Self::spawn_inner(cfg, dry_run, src)
+        let cursor_params = CursorParams::new(
+            cfg.touchpad_cursor_sensitivity,
+            cfg.touchpad_cursor_enabled,
+        );
+        let src = GamepadSource::new(cursor_params.clone())?;
+        Self::spawn_inner(cfg, dry_run, src, cursor_params)
     }
 
     /// Spawn with a fake gamepad source. Events are injected via
@@ -190,15 +205,24 @@ impl Engine {
     /// Not part of the stable public API — used by integration tests.
     #[doc(hidden)]
     pub fn spawn_with_fake_gamepad(cfg: Config) -> Result<Self> {
+        let cursor_params = CursorParams::new(
+            cfg.touchpad_cursor_sensitivity,
+            cfg.touchpad_cursor_enabled,
+        );
         let (fake_tx, fake_rx) = unbounded::<crate::gamepad::GamepadEvent>();
         let src = GamepadSource::fake(fake_rx);
-        let engine = Self::spawn_inner(cfg, /*dry_run=*/true, src)?;
+        let engine = Self::spawn_inner(cfg, /*dry_run=*/true, src, cursor_params)?;
         // Install the sender into HandleInner.
         *engine.handle.inner.fake_tx.lock().unwrap() = Some(fake_tx);
         Ok(engine)
     }
 
-    fn spawn_inner(cfg: Config, dry_run: bool, src: GamepadSource) -> Result<Self> {
+    fn spawn_inner(
+        cfg: Config,
+        dry_run: bool,
+        src: GamepadSource,
+        cursor_params: CursorParams,
+    ) -> Result<Self> {
         let key_state = safety::shared();
         let (event_tx, event_rx) = unbounded::<EngineEvent>();
 
@@ -213,6 +237,7 @@ impl Engine {
             key_state: key_state.clone(),
             fake_tx: Mutex::new(None),
             current_status: RwLock::new(None),
+            cursor_params,
         });
 
         let handle = Handle { inner: inner.clone() };

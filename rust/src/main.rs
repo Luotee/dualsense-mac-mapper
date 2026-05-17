@@ -274,7 +274,7 @@ fn list_buttons(cfg: Option<Config>) -> Result<()> {
             .unwrap_or_else(|| "<no label — id not in config>".into())
     };
 
-    let mut source = GamepadSource::new()?;
+    let mut source = GamepadSource::new(dualsense_mapper::gamepad::CursorParams::default())?;
     println!("Press a button or move a stick. Ctrl-C to quit.");
 
     let shutdown = Arc::new(AtomicBool::new(false));
@@ -299,6 +299,8 @@ fn list_buttons(cfg: Option<Config>) -> Result<()> {
                     println!("  [axis  ] id={axis:<3} v={value:+.2}     (stick)"),
                 GamepadEvent::Trigger { axis, value } =>
                     println!("  [trig  ] id={axis:<3} v={value:+.2}     (trigger normalized)"),
+                GamepadEvent::MouseDelta { dx, dy } =>
+                    println!("  [touch ] dx={dx:<+4} dy={dy:<+4}  (touchpad cursor)"),
             }
         }
         std::thread::sleep(std::time::Duration::from_millis(10));

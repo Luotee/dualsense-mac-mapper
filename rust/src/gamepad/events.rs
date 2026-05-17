@@ -12,4 +12,9 @@ pub enum GamepadEvent {
     Stick { axis: u32, value: f32 },
     /// Triggers: l2=4, r2=5 — value normalised to [0.0, 1.0]
     Trigger { axis: u32, value: f32 },
+    /// Relative cursor motion from the DualSense touchpad. Bypasses
+    /// the binding system — the mapper forwards it directly to the
+    /// mouse sink. Values are already scaled by
+    /// `touchpad_cursor_sensitivity`.
+    MouseDelta { dx: i32, dy: i32 },
 }

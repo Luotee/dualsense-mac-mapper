@@ -58,6 +58,8 @@ impl Mapper {
                 self.last_axis[axis as usize] = value;
                 self.update_trigger_virtuals(axis)
             }
+            // Task 6 will route this through MouseSink::move_rel.
+            GamepadEvent::MouseDelta { .. } => Vec::new(),
         }
     }
 

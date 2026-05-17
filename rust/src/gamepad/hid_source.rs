@@ -10,6 +10,7 @@
 //! - `fake(rx)`          — direct GamepadEvent injection (engine tests)
 //! - `new_from_byte_stream(rx)` — raw 78-byte injection (state-machine tests)
 
+use super::cursor_params::CursorParams;
 use super::ds_protocol::{build_handshake_buffer, decode_31, DsState, REPORT_LEN_BT};
 use super::events::GamepadEvent;
 use anyhow::{anyhow, Context, Result};
@@ -18,6 +19,95 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::thread;
 use std::time::Duration;
+
+/// Mid-point of the 1920×1080 touchpad coordinate space — quadrant
+/// boundary for click position → button id.
+const TOUCHPAD_X_MID: u16 = 960;
+const TOUCHPAD_Y_MID: u16 = 540;
+/// Drop sub-2-pixel motion so a resting finger doesn't synthesise a
+/// drift. Anything strictly greater than this gets emitted.
+const CURSOR_JITTER_FLOOR: i32 = 1;
+/// Button ids 25..=28 = Touchpad TL/TR/BL/BR. Matches
+/// `config::TOUCHPAD_QUADRANT_IDS`; duplicated here to avoid pulling
+/// the config crate into the gamepad layer.
+const QUAD_TL: u32 = 25;
+const QUAD_TR: u32 = 26;
+const QUAD_BL: u32 = 27;
+const QUAD_BR: u32 = 28;
+
+/// Per-worker touchpad tracking. Reset on each new device connect.
+#[derive(Default)]
+struct TouchpadState {
+    last_finger_pos: Option<(u16, u16)>,
+    last_click_quadrant: Option<u32>,
+    prev_touchpad_btn: bool,
+}
+
+fn quadrant_for(x: u16, y: u16) -> u32 {
+    match (x < TOUCHPAD_X_MID, y < TOUCHPAD_Y_MID) {
+        (true,  true)  => QUAD_TL,
+        (false, true)  => QUAD_TR,
+        (true,  false) => QUAD_BL,
+        (false, false) => QUAD_BR,
+    }
+}
+
+/// Cursor delta + touchpad click → 4-quadrant button events. Mutates
+/// `state` across frames. Called per decoded `DsState`.
+fn process_touchpad(
+    state: &mut TouchpadState,
+    cur: &DsState,
+    params: &CursorParams,
+    tx: &Sender<GamepadEvent>,
+) {
+    // Cursor: relative motion from the previous finger 0 position.
+    if cur.finger0_active {
+        match state.last_finger_pos {
+            None => {
+                // Touch-down — record the start position without emitting.
+                state.last_finger_pos = Some((cur.finger0_x, cur.finger0_y));
+            }
+            Some((lx, ly)) => {
+                let dx_raw = cur.finger0_x as i32 - lx as i32;
+                let dy_raw = cur.finger0_y as i32 - ly as i32;
+                let moved = dx_raw.abs() > CURSOR_JITTER_FLOOR
+                    || dy_raw.abs() > CURSOR_JITTER_FLOOR;
+                if moved {
+                    if params.enabled() {
+                        let s = params.sensitivity();
+                        let dx = (dx_raw as f32 * s) as i32;
+                        let dy = (dy_raw as f32 * s) as i32;
+                        let _ = tx.send(GamepadEvent::MouseDelta { dx, dy });
+                    }
+                    state.last_finger_pos = Some((cur.finger0_x, cur.finger0_y));
+                }
+            }
+        }
+    } else {
+        // Finger lifted — clear the reference so the next touch-down
+        // doesn't synthesise a jump from the old position.
+        state.last_finger_pos = None;
+    }
+
+    // Click: rising edge captures the quadrant; falling edge releases
+    // the same id we captured (so a drag across boundaries does not
+    // re-emit).
+    if cur.touchpad_btn && !state.prev_touchpad_btn {
+        let q = if cur.finger0_active {
+            quadrant_for(cur.finger0_x, cur.finger0_y)
+        } else {
+            // No finger at click-down (rare): default to TL.
+            QUAD_TL
+        };
+        state.last_click_quadrant = Some(q);
+        let _ = tx.send(GamepadEvent::ButtonDown(q));
+    } else if !cur.touchpad_btn && state.prev_touchpad_btn {
+        if let Some(q) = state.last_click_quadrant.take() {
+            let _ = tx.send(GamepadEvent::ButtonUp(q));
+        }
+    }
+    state.prev_touchpad_btn = cur.touchpad_btn;
+}
 
 /// Sony Computer Entertainment.
 const DS_VID: u16 = 0x054c;
@@ -41,14 +131,15 @@ pub struct HidSource {
 impl HidSource {
     /// Spawn the production hidapi worker. The worker thread starts in
     /// `Searching` and emits no events until the first 0x31 frame is
-    /// decoded.
-    pub fn new() -> Result<Self> {
+    /// decoded. `params` carries the live touchpad cursor sensitivity
+    /// and on/off flag; the engine mutates them through `set_settings`.
+    pub fn new(params: CursorParams) -> Result<Self> {
         let (tx, rx) = unbounded::<GamepadEvent>();
         let stop = Arc::new(AtomicBool::new(false));
         let stop_for_thread = stop.clone();
         thread::Builder::new()
             .name("dualsense-hid".into())
-            .spawn(move || worker_real(tx, stop_for_thread))
+            .spawn(move || worker_real(tx, stop_for_thread, params))
             .map_err(|e| anyhow!("spawning HID worker thread: {e}"))?;
         Ok(Self { rx, stop })
     }
@@ -63,15 +154,24 @@ impl HidSource {
 
     /// Test-only constructor for state-machine tests. Decodes
     /// `Vec<u8>` frames as if they came from hidapi and runs the full
-    /// diff pipeline.
+    /// diff pipeline. Uses default cursor params (1.5, enabled=true).
     #[doc(hidden)]
     pub fn new_from_byte_stream(byte_rx: Receiver<Vec<u8>>) -> Self {
+        Self::new_from_byte_stream_with_params(byte_rx, CursorParams::default())
+    }
+
+    /// Same as `new_from_byte_stream` but with explicit cursor params.
+    #[doc(hidden)]
+    pub fn new_from_byte_stream_with_params(
+        byte_rx: Receiver<Vec<u8>>,
+        params: CursorParams,
+    ) -> Self {
         let (tx, rx) = unbounded::<GamepadEvent>();
         let stop = Arc::new(AtomicBool::new(false));
         let stop_for_thread = stop.clone();
         thread::Builder::new()
             .name("dualsense-hid-fake".into())
-            .spawn(move || worker_byte_stream(byte_rx, tx, stop_for_thread))
+            .spawn(move || worker_byte_stream(byte_rx, tx, stop_for_thread, params))
             .expect("spawning fake HID worker");
         Self { rx, stop }
     }
@@ -90,7 +190,7 @@ impl Drop for HidSource {
     }
 }
 
-fn worker_real(tx: Sender<GamepadEvent>, stop: Arc<AtomicBool>) {
+fn worker_real(tx: Sender<GamepadEvent>, stop: Arc<AtomicBool>, params: CursorParams) {
     let mut api = match hidapi::HidApi::new() {
         Ok(a) => a,
         Err(e) => {
@@ -115,7 +215,10 @@ fn worker_real(tx: Sender<GamepadEvent>, stop: Arc<AtomicBool>) {
                 let _ = try_handshake(&d);
                 let mut prev_buttons = [false; 25];
                 let mut last_state: Option<DsState> = None;
-                let outcome = read_loop(d, &tx, &mut last_state, &mut prev_buttons, &stop);
+                let mut touchpad = TouchpadState::default();
+                let outcome = read_loop(
+                    d, &tx, &mut last_state, &mut prev_buttons, &mut touchpad, &params, &stop,
+                );
                 tracing::info!(?outcome, "read loop exited; back to Searching");
                 let _ = tx.send(GamepadEvent::Disconnected);
             }
@@ -138,6 +241,8 @@ fn read_loop(
     tx: &Sender<GamepadEvent>,
     last_state: &mut Option<DsState>,
     prev_buttons: &mut [bool; 25],
+    touchpad: &mut TouchpadState,
+    params: &CursorParams,
     stop: &Arc<AtomicBool>,
 ) -> &'static str {
     let mut buf = [0u8; REPORT_LEN_BT];
@@ -159,6 +264,7 @@ fn read_loop(
                         emitted_connected = true;
                     }
                     diff_emit(last_state.as_ref(), &s, prev_buttons, tx);
+                    process_touchpad(touchpad, &s, params, tx);
                     *last_state = Some(s);
                 }
             }
@@ -175,9 +281,11 @@ fn worker_byte_stream(
     byte_rx: Receiver<Vec<u8>>,
     tx: Sender<GamepadEvent>,
     stop: Arc<AtomicBool>,
+    params: CursorParams,
 ) {
     let mut last_state: Option<DsState> = None;
     let mut prev_buttons = [false; 25];
+    let mut touchpad = TouchpadState::default();
     let mut emitted_connected = false;
     while !stop.load(Ordering::SeqCst) {
         match byte_rx.recv() {
@@ -188,6 +296,7 @@ fn worker_byte_stream(
                         emitted_connected = true;
                     }
                     diff_emit(last_state.as_ref(), &s, &mut prev_buttons, &tx);
+                    process_touchpad(&mut touchpad, &s, &params, &tx);
                     last_state = Some(s);
                 }
             }
