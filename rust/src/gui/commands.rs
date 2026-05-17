@@ -445,6 +445,20 @@ pub fn set_capture_active(
     Ok(())
 }
 
+/// Tauri command: signal the HID worker to drop its current device
+/// handle and return to Searching. The worker thread stays alive; a
+/// new controller (the same or different) reconnects on next button
+/// press via the normal handshake path. The frontend's "Disconnect"
+/// button in the Activity log header invokes this.
+#[cfg(feature = "gui")]
+#[tauri::command]
+pub fn disconnect_gamepad(
+    engine: State<'_, Handle>,
+) -> Result<(), String> {
+    engine.disconnect_current_device();
+    Ok(())
+}
+
 /// Tauri command: return the current controller connection state.
 ///
 /// The engine emits `controller-status` events on connect/disconnect, but
