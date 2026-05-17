@@ -453,11 +453,15 @@ function mkQuarter(ns, cx, cy, dir, cls) {
     [-x_in,  -x_in  - d],  // inner-left  (on left chord  ∩ inner arc)
     [ x_in,  -x_in  - d],  // inner-right (on right chord ∩ inner arc)
   ];
+  // Proper rotations (not reflections) so SVG arc sweep direction stays
+  // valid after transform. Same fix as `mkArrow`'s map — see v1.1.4
+  // release notes. Reflection-based maps for `down`/`left` flipped the
+  // arc direction and produced visibly broken quarters.
   const map = {
-    up:    ([x, y]) => [x,  y],
-    down:  ([x, y]) => [x, -y],
-    left:  ([x, y]) => [y,  x],
-    right: ([x, y]) => [-y, x],
+    up:    ([x, y]) => [ x,  y],   // 0°
+    right: ([x, y]) => [-y,  x],   // 90° CW
+    down:  ([x, y]) => [-x, -y],   // 180°
+    left:  ([x, y]) => [ y, -x],   // 90° CCW
   }[dir];
   const [vO_R, vO_L, vI_L, vI_R] = upVerts.map(map).map(
     ([dx, dy]) => [cx + dx, cy + dy]);
