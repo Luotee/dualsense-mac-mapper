@@ -1,3 +1,4 @@
+use crate::config::MouseButton;
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
@@ -25,11 +26,12 @@ static GLOBAL: std::sync::OnceLock<SharedKeyState> = std::sync::OnceLock::new();
 #[derive(Default, Debug)]
 pub struct KeyState {
     counts: HashMap<String, u32>,
+    mouse_counts: HashMap<MouseButton, u32>,
 }
 
 impl KeyState {
     pub fn new() -> Self {
-        Self { counts: HashMap::new() }
+        Self { counts: HashMap::new(), mouse_counts: HashMap::new() }
     }
 
     pub fn press(&mut self, key: &str) -> Edge {
@@ -58,6 +60,37 @@ impl KeyState {
     /// Number of keys with a positive refcount (i.e., currently pressed).
     pub fn len_held(&self) -> usize {
         self.counts.values().filter(|&&c| c > 0).count()
+    }
+
+    pub fn press_mouse(&mut self, b: MouseButton) -> Edge {
+        let entry = self.mouse_counts.entry(b).or_insert(0);
+        *entry += 1;
+        if *entry == 1 { Edge::Press } else { Edge::None }
+    }
+
+    pub fn release_mouse(&mut self, b: MouseButton) -> Edge {
+        let entry = self.mouse_counts.entry(b).or_insert(0);
+        if *entry == 0 {
+            return Edge::None;
+        }
+        *entry -= 1;
+        if *entry == 0 { Edge::Release } else { Edge::None }
+    }
+
+    pub fn drain_held_mouse(&mut self) -> Vec<MouseButton> {
+        let held: Vec<MouseButton> = self.mouse_counts.iter()
+            .filter_map(|(b, c)| if *c > 0 { Some(*b) } else { None })
+            .collect();
+        self.mouse_counts.clear();
+        held
+    }
+
+    pub fn is_mouse_held(&self, b: MouseButton) -> bool {
+        self.mouse_counts.get(&b).copied().unwrap_or(0) > 0
+    }
+
+    pub fn len_held_mouse(&self) -> usize {
+        self.mouse_counts.values().filter(|&&c| c > 0).count()
     }
 }
 
@@ -104,22 +137,33 @@ pub fn register_global(state: SharedKeyState) {
 /// reaching `Engine::spawn`), this is a safe no-op.
 pub fn emergency_release_all() -> anyhow::Result<()> {
     let Some(state) = GLOBAL.get() else { return Ok(()); };
-    let held = state
-        .lock()
-        .unwrap_or_else(|p| p.into_inner())
-        .drain_held();
-    if held.is_empty() {
+    let (held_keys, held_mouse) = {
+        let mut s = state.lock().unwrap_or_else(|p| p.into_inner());
+        (s.drain_held(), s.drain_held_mouse())
+    };
+    if held_keys.is_empty() && held_mouse.is_empty() {
         return Ok(());
     }
-    eprintln!("[emergency_release_all] releasing held keys: {held:?}");
+    if !held_keys.is_empty() {
+        eprintln!("[emergency_release_all] releasing held keys: {held_keys:?}");
+    }
+    if !held_mouse.is_empty() {
+        eprintln!("[emergency_release_all] releasing held mouse buttons: {held_mouse:?}");
+    }
     // Best-effort OS synth — may fail on headless runners; that is acceptable.
     match enigo::Enigo::new(&enigo::Settings::default()) {
         Ok(mut enigo) => {
-            use enigo::{Direction, Keyboard};
-            for name in &held {
+            use enigo::{Direction, Keyboard, Mouse};
+            for name in &held_keys {
                 if let Ok(k) = crate::config::parse_key(name) {
                     let _ = enigo.key(k, Direction::Release);
                 }
+            }
+            for b in &held_mouse {
+                if let Some(eb) = enigo_button_for(*b) {
+                    let _ = enigo.button(eb, Direction::Release);
+                }
+                // wheel-up / wheel-down are one-shot scrolls; nothing to release.
             }
         }
         Err(e) => {
@@ -127,6 +171,15 @@ pub fn emergency_release_all() -> anyhow::Result<()> {
         }
     }
     Ok(())
+}
+
+fn enigo_button_for(b: MouseButton) -> Option<enigo::Button> {
+    Some(match b {
+        MouseButton::Left => enigo::Button::Left,
+        MouseButton::Middle => enigo::Button::Middle,
+        MouseButton::Right => enigo::Button::Right,
+        MouseButton::WheelUp | MouseButton::WheelDown => return None,
+    })
 }
 
 /// Simulate a key press in the global panic-hook state. For integration tests only.
@@ -187,5 +240,36 @@ mod tests {
         assert!(held.contains(&"Up".to_string()));
         assert_eq!(held.len(), 2);
         assert_eq!(s.release("x"), Edge::None); // table cleared
+    }
+
+    #[test]
+    fn mouse_single_press_release_edges() {
+        let mut s = KeyState::new();
+        assert_eq!(s.press_mouse(MouseButton::Left), Edge::Press);
+        assert!(s.is_mouse_held(MouseButton::Left));
+        assert_eq!(s.release_mouse(MouseButton::Left), Edge::Release);
+        assert!(!s.is_mouse_held(MouseButton::Left));
+    }
+
+    #[test]
+    fn mouse_double_press_only_first_edges() {
+        let mut s = KeyState::new();
+        assert_eq!(s.press_mouse(MouseButton::Right), Edge::Press);
+        assert_eq!(s.press_mouse(MouseButton::Right), Edge::None);
+        assert_eq!(s.release_mouse(MouseButton::Right), Edge::None);
+        assert_eq!(s.release_mouse(MouseButton::Right), Edge::Release);
+    }
+
+    #[test]
+    fn drain_held_mouse_clears() {
+        let mut s = KeyState::new();
+        s.press_mouse(MouseButton::Left);
+        s.press_mouse(MouseButton::Middle);
+        let held = s.drain_held_mouse();
+        assert_eq!(held.len(), 2);
+        assert!(held.contains(&MouseButton::Left));
+        assert!(held.contains(&MouseButton::Middle));
+        assert_eq!(s.len_held_mouse(), 0);
+        assert_eq!(s.release_mouse(MouseButton::Left), Edge::None); // cleared
     }
 }
