@@ -32,6 +32,12 @@ fn cfg_with_touchpad_tl_left_click() -> Config {
         touchpad_cursor_sensitivity: 1.5,
         touchpad_midpoint_x: 960,
         touchpad_midpoint_y: 540,
+        touchpad_accel_slow_threshold: 5,
+        touchpad_accel_fast_threshold: 20,
+        touchpad_accel_gain_slow: 0.5,
+        touchpad_accel_gain_fast: 1.5,
+        touchpad_deadzone_radius: 2,
+        touchpad_click_freeze_enabled: true,
     }
 }
 

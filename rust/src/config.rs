@@ -19,12 +19,30 @@ pub struct Config {
     pub touchpad_midpoint_x: u16,
     #[serde(default = "default_touchpad_midpoint_y")]
     pub touchpad_midpoint_y: u16,
+    #[serde(default = "default_touchpad_accel_slow_threshold")]
+    pub touchpad_accel_slow_threshold: u32,
+    #[serde(default = "default_touchpad_accel_fast_threshold")]
+    pub touchpad_accel_fast_threshold: u32,
+    #[serde(default = "default_touchpad_accel_gain_slow")]
+    pub touchpad_accel_gain_slow: f32,
+    #[serde(default = "default_touchpad_accel_gain_fast")]
+    pub touchpad_accel_gain_fast: f32,
+    #[serde(default = "default_touchpad_deadzone_radius")]
+    pub touchpad_deadzone_radius: u32,
+    #[serde(default = "default_touchpad_click_freeze_enabled")]
+    pub touchpad_click_freeze_enabled: bool,
 }
 
 fn default_touchpad_cursor_enabled() -> bool { true }
 fn default_touchpad_cursor_sensitivity() -> f32 { 1.5 }
 fn default_touchpad_midpoint_x() -> u16 { 960 }
 fn default_touchpad_midpoint_y() -> u16 { 540 }
+fn default_touchpad_accel_slow_threshold() -> u32 { 5 }
+fn default_touchpad_accel_fast_threshold() -> u32 { 20 }
+fn default_touchpad_accel_gain_slow() -> f32 { 0.5 }
+fn default_touchpad_accel_gain_fast() -> f32 { 1.5 }
+fn default_touchpad_deadzone_radius() -> u32 { 2 }
+fn default_touchpad_click_freeze_enabled() -> bool { true }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct ButtonEntry {
@@ -147,6 +165,31 @@ impl Config {
             bail!(
                 "touchpad_midpoint_y must be in [1, 4094], got {}",
                 self.touchpad_midpoint_y
+            );
+        }
+        if self.touchpad_accel_slow_threshold >= self.touchpad_accel_fast_threshold {
+            bail!(
+                "touchpad_accel_slow_threshold ({}) must be < touchpad_accel_fast_threshold ({})",
+                self.touchpad_accel_slow_threshold,
+                self.touchpad_accel_fast_threshold
+            );
+        }
+        if !(0.1..=1.0).contains(&self.touchpad_accel_gain_slow) {
+            bail!(
+                "touchpad_accel_gain_slow must be in [0.1, 1.0], got {}",
+                self.touchpad_accel_gain_slow
+            );
+        }
+        if !(1.0..=5.0).contains(&self.touchpad_accel_gain_fast) {
+            bail!(
+                "touchpad_accel_gain_fast must be in [1.0, 5.0], got {}",
+                self.touchpad_accel_gain_fast
+            );
+        }
+        if self.touchpad_deadzone_radius > 50 {
+            bail!(
+                "touchpad_deadzone_radius must be <= 50, got {}",
+                self.touchpad_deadzone_radius
             );
         }
         for id in VALID_BUTTON_IDS {
@@ -473,6 +516,12 @@ mod tests {
             touchpad_cursor_sensitivity: 1.5,
             touchpad_midpoint_x: 960,
             touchpad_midpoint_y: 540,
+            touchpad_accel_slow_threshold: 5,
+            touchpad_accel_fast_threshold: 20,
+            touchpad_accel_gain_slow: 0.5,
+            touchpad_accel_gain_fast: 1.5,
+            touchpad_deadzone_radius: 2,
+            touchpad_click_freeze_enabled: true,
         }
     }
 
@@ -554,6 +603,12 @@ mod tests {
             touchpad_cursor_sensitivity: 1.5,
             touchpad_midpoint_x: 960,
             touchpad_midpoint_y: 540,
+            touchpad_accel_slow_threshold: 5,
+            touchpad_accel_fast_threshold: 20,
+            touchpad_accel_gain_slow: 0.5,
+            touchpad_accel_gain_fast: 1.5,
+            touchpad_deadzone_radius: 2,
+            touchpad_click_freeze_enabled: true,
         }
     }
 
@@ -567,5 +622,38 @@ mod tests {
         cfg.touchpad_cursor_sensitivity = 20.0;
         let err = cfg.validate().unwrap_err().to_string();
         assert!(err.contains("touchpad_cursor_sensitivity"), "got: {err}");
+    }
+
+    #[test]
+    fn rejects_slow_geq_fast_accel_threshold() {
+        let mut cfg = sample_full_config();
+        cfg.touchpad_accel_slow_threshold = 30;
+        cfg.touchpad_accel_fast_threshold = 20;
+        let err = cfg.validate().unwrap_err().to_string();
+        assert!(err.contains("touchpad_accel_slow_threshold"), "got: {err}");
+    }
+
+    #[test]
+    fn rejects_accel_gain_slow_above_one() {
+        let mut cfg = sample_full_config();
+        cfg.touchpad_accel_gain_slow = 1.5;
+        let err = cfg.validate().unwrap_err().to_string();
+        assert!(err.contains("touchpad_accel_gain_slow"), "got: {err}");
+    }
+
+    #[test]
+    fn rejects_accel_gain_fast_below_one() {
+        let mut cfg = sample_full_config();
+        cfg.touchpad_accel_gain_fast = 0.8;
+        let err = cfg.validate().unwrap_err().to_string();
+        assert!(err.contains("touchpad_accel_gain_fast"), "got: {err}");
+    }
+
+    #[test]
+    fn rejects_deadzone_radius_above_50() {
+        let mut cfg = sample_full_config();
+        cfg.touchpad_deadzone_radius = 100;
+        let err = cfg.validate().unwrap_err().to_string();
+        assert!(err.contains("touchpad_deadzone_radius"), "got: {err}");
     }
 }
