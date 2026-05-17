@@ -3,6 +3,23 @@
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/);
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.2.3] - 2026-05-18
+
+### Changed
+
+- **Application icon refresh.** Replaced `rust/icons/icon.ico` with a
+  Gruvbox-themed coloured DualSense rendering ("v6 Inverted":
+  cream `#ebdbb2` body, dark `#282828` outline, `#d5c4a1` touchpad
+  backing, face buttons in the four gruvbox accent hues — green
+  `#b8bb26` / red `#fb4934` / blue `#83a598` / orange `#fe8019` —
+  and a `#fabd2f` yellow PS LED). Generated from
+  `scripts/icon_variants.py`, which flood-fills a user-supplied
+  line drawing (kept local under `dist/` per `.gitignore`) and
+  packs the result at 16/32/48/256. Tray icons
+  (`tray-connected.ico`, `tray-disconnected.ico`) are
+  unchanged — they convey connection state and intentionally
+  stay abstract.
+
 ## [2.2.2] - 2026-05-18
 
 ### Fixed
