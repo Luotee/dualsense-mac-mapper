@@ -66,7 +66,10 @@ fn cursor_emits_mouse_delta_after_touch_down() {
     let mut src = HidSource::new_from_byte_stream(rx);
 
     // Frame 1: finger at (100, 100) — touch-down, no emit.
-    // Frame 2: finger at (200, 150) — delta (+100, +50) × 1.5 = (150, 75).
+    // Frame 2: finger at (200, 150) — delta (+100, +50).
+    //   mag = sqrt(100²+50²) ≈ 111.8 > fast_threshold(20)
+    //   → gain = 1.50 (accel_gain_fast), total = sens(1.5) × gain(1.5) = 2.25
+    //   → dx = (100 * 2.25) as i32 = 225, dy = (50 * 2.25) as i32 = 112.
     let mut a = neutral_report();
     finger_at(&mut a, 100, 100);
     let mut b = neutral_report();
@@ -82,8 +85,8 @@ fn cursor_emits_mouse_delta_after_touch_down() {
         _ => None,
     });
     let (dx, dy) = delta.expect(&format!("expected MouseDelta, got {out:?}"));
-    assert_eq!(dx, 150);
-    assert_eq!(dy, 75);
+    assert_eq!(dx, 225);
+    assert_eq!(dy, 112);
 }
 
 #[test]
@@ -119,7 +122,10 @@ fn cursor_teleport_guard_suppresses_huge_jump() {
     // Frame 2: finger at fresh-touch coords (100, 100).
     //   Raw delta = (-1700, -900) → both well over CURSOR_TELEPORT_GUARD.
     // Frame 3: finger moves a believable amount, (130, 120).
-    //   Delta from frame 2 = (+30, +20) → MouseDelta should fire here.
+    //   Delta from frame 2 = (+30, +20).
+    //   mag = sqrt(30²+20²) ≈ 36.1 > fast_threshold(20)
+    //   → gain = 1.50, total = sens(1.5) × gain(1.5) = 2.25
+    //   → dx = (30 * 2.25) as i32 = 67, dy = (20 * 2.25) as i32 = 45.
     let mut a = neutral_report();
     finger_at(&mut a, 1800, 1000);
     let mut b = neutral_report();
@@ -140,7 +146,9 @@ fn cursor_teleport_guard_suppresses_huge_jump() {
     assert_eq!(deltas.len(), 1,
         "expected exactly one MouseDelta after teleport guard, got {deltas:?}");
     let (dx, dy) = deltas[0];
-    assert_eq!((dx, dy), ((30.0 * 1.5) as i32, (20.0 * 1.5) as i32));
+    // With 3-layer filter: mag ≈ 36 > fast_threshold(20) → gain=1.5,
+    // total = sens(1.5) * gain(1.5) = 2.25 → (67, 45).
+    assert_eq!((dx, dy), ((30.0_f32 * 2.25) as i32, (20.0_f32 * 2.25) as i32));
 }
 
 #[test]

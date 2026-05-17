@@ -20,9 +20,6 @@ use std::sync::Arc;
 use std::thread;
 use std::time::Duration;
 
-/// Drop sub-2-pixel motion so a resting finger doesn't synthesise a
-/// drift. Anything strictly greater than this gets emitted.
-const CURSOR_JITTER_FLOOR: i32 = 1;
 /// Per-frame raw-coordinate delta upper bound. A real finger at 250 Hz
 /// frame rate over the 1920-wide pad cannot move more than ~150 raw px
 /// in one frame. Larger jumps come from the DualSense reporting one
@@ -168,6 +165,9 @@ fn process_touchpad(
     params: &CursorParams,
     tx: &Sender<GamepadEvent>,
 ) {
+    // Click button state for L1 freeze — set every frame so the filter
+    // sees the current button state, not the previous frame's.
+    state.click_btn_held = cur.touchpad_btn;
     // Cursor: relative motion from the previous finger 0 position.
     if cur.finger0_active {
         match state.last_finger_pos {
@@ -189,19 +189,16 @@ fn process_touchpad(
                     state.last_finger_pos = Some((cur.finger0_x, cur.finger0_y));
                     state.touchdown_pos = Some((cur.finger0_x, cur.finger0_y));
                 } else {
-                    let moved = dx_raw.abs() > CURSOR_JITTER_FLOOR
-                        || dy_raw.abs() > CURSOR_JITTER_FLOOR;
-                    if moved {
-                        if params.enabled() {
-                            let s = params.sensitivity();
-                            let dx = (dx_raw as f32 * s) as i32;
-                            let dy = (dy_raw as f32 * s) as i32;
+                    // Always advance the anchor so deltas don't accumulate stale,
+                    // but only emit if the 3-layer filter (freeze/deadzone/curve)
+                    // approves the frame. Filter handles sensitivity scaling too.
+                    state.last_finger_pos = Some((cur.finger0_x, cur.finger0_y));
+                    // touchdown_pos intentionally NOT updated on motion — it
+                    // represents the user's intent at touch-down.
+                    if params.enabled() {
+                        if let Some((dx, dy)) = filter_cursor_delta(dx_raw, dy_raw, state, params) {
                             let _ = tx.send(GamepadEvent::MouseDelta { dx, dy });
                         }
-                        state.last_finger_pos = Some((cur.finger0_x, cur.finger0_y));
-                        // touchdown_pos intentionally NOT updated on
-                        // motion — it represents the user's intent at
-                        // touch-down, not the drifted current position.
                     }
                 }
             }
