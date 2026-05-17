@@ -205,6 +205,10 @@ const defaults = {
   // Touchpad quadrants — gap = centre-cross spacing between the 4
   // bindable zones (matches the d-pad pentagon gap convention).
   tpquad:   { gap: 1.5 },
+  // Corner radius — inset for rounded corners on d-pad wedges + stick slices.
+  // Matches CORNER_RADIUS in rust/web/controller.js.
+  // Note: tuner preview shows sharp corners; values apply at production render time.
+  cornerRadius: { dpad: 0.8, stickSlice: 0.7 },
 };
 
 let state = JSON.parse(JSON.stringify(defaults));
@@ -338,6 +342,16 @@ const groups = [
              `outer-corner radius inherited from touchpad rx = <b>${s.touchpad.rx}</b>`;
     },
   },
+  {
+    title: 'Corner radius (rounded outer corners)', path: 'cornerRadius', fields: [
+      ['dpad',       'd-pad wedge',  0, 3, 0.05],
+      ['stickSlice', 'stick slice',  0, 3, 0.05],
+    ],
+    derived: s => {
+      return `d-pad inset = <b>${s.cornerRadius.dpad}</b> px from outer corners<br>` +
+             `stick slice inset = <b>${s.cornerRadius.stickSlice}</b> px from all 4 corners`;
+    },
+  },
 ];
 
 // ── Build side panel ──────────────────────────────────────────────────────
@@ -421,6 +435,7 @@ function generateExport() {
   lines.push('// ── Sprite geometry constants ─────────────────────────────');
   lines.push(`const TOUCHPAD = { x: ${fcs(s.touchpad.x)}, y: ${fcs(s.touchpad.y)}, w: ${fcs(s.touchpad.w)}, h: ${fcs(s.touchpad.h)}, rx: ${fcs(s.touchpad.rx)} };`);
   lines.push(`const TOUCHPAD_QUAD_GAP = ${fcs(s.tpquad.gap)};`);
+  lines.push(`const CORNER_RADIUS = { dpad: ${fcs(s.cornerRadius.dpad)}, stickSlice: ${fcs(s.cornerRadius.stickSlice)} };`);
   lines.push(`const L_STICK  = { cx: ${fcs(s.lstick.cx)}, cy: ${fcs(s.lstick.cy)}, r: ${fcs(s.lstick.r)} };`);
   lines.push(`const R_STICK  = { cx: ${fcs(s.rstick.cx)}, cy: ${fcs(s.rstick.cy)}, r: ${fcs(s.rstick.r)} };`);
   lines.push('');
