@@ -3,6 +3,61 @@
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/);
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.1.0] - 2026-05-17
+
+### Added
+
+- **Touchpad as laptop-style touchpad.** One finger on the
+  DualSense touchpad drives the OS cursor (relative motion).
+  Cursor is on by default; toggle and tune sensitivity in
+  Settings → Touchpad (range `[0.1, 10.0]`, default `1.5`).
+  Sub-2-pixel motion is filtered so a resting finger does not
+  synthesise drift.
+- **Touchpad press → 4 quadrant bindings.** The whole-pad click
+  emits `ButtonDown(25..=28)` based on which quadrant
+  (TL=25 / TR=26 / BL=27 / BR=28, split at x=960 / y=540) the
+  finger was in at click-down. A drag across quadrant boundaries
+  while the click is held keeps the original quadrant — matches
+  laptop touchpad behaviour, lets users drag-select with mouse
+  left held throughout. Default binding for all four: mouse
+  left click.
+- **`Binding::Mouse(MouseButton)`** new binding type. JSON form:
+  `{ "type": "mouse", "value": "<kebab-case>" }`. Supported
+  values: `left`, `middle`, `right`, `wheel-up`, `wheel-down`.
+  Wheel values are one-shot scrolls (press fires the scroll;
+  release is a no-op).
+- **GUI** controller diagram splits the touchpad rect into four
+  bindable quadrants; the bind popup gains a "Mouse" segment with
+  the 5-option picker; the chip list extends to ids `0..=28`.
+- **Settings tab** adds a Touchpad section (cursor toggle +
+  sensitivity number input). Saving pushes the values straight
+  to the HID worker's atomic cursor params, so changes take
+  effect on the next decoded frame — no restart.
+
+### Changed
+
+- **`VALID_BUTTON_IDS` extends to `0..=28`.** Ids 25..=28 are
+  the four touchpad quadrants. v2.0 configs (which never had
+  these ids) auto-migrate on load — `Config::fill_touchpad_defaults`
+  inserts the missing ids as `Unbound`, and `ConfigDoc::load`
+  patches the raw JSON view so the next `write_atomic` emits
+  the new ids. Existing user configs continue to load and
+  validate without manual edits.
+- **Default `dualsense-mapper.json`** ships with quadrants
+  25..=28 bound to `Mouse(Left)` and the two new top-level
+  fields (`touchpad_cursor_enabled`, `touchpad_cursor_sensitivity`).
+
+### Iron rules
+
+- **Rule #1** updated: `Config::validate` now requires all ids
+  `0..=28`, not `0..=24`. Loaders auto-fill the new ids before
+  validation so MINOR semantics are preserved.
+- **Rule #3** amended: `release_all_held` and the panic hook
+  now release every held key **and** every held mouse button.
+  `KeyState` tracks both refcount tables;
+  `emergency_release_all` walks both and synthesises
+  `Direction::Release` through enigo for each.
+
 ## [2.0.0] - 2026-05-17
 
 ### Breaking changes

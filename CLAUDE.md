@@ -70,18 +70,26 @@ These are project-specific invariants. Breaking any of them silently
 regresses real, observed bugs the codebase already fixed once:
 
 1. **`config.rs::Config::validate` must reject any config that does not
-   list every button id `0..=24`.** Missing ids are a user error, not a
-   silent skip. This is what gives the user a single discoverable
-   surface; never relax it.
-2. **`safety.rs` is the single source of truth for "what keys are
-   physically pressed right now."** `keyboard.rs` always asks
-   `KeyState::press` / `release` for the edge transition and only
-   forwards a real synth on `Edge::Press` / `Edge::Release`. Bypassing
-   this leaks a stuck KEYDOWN — see commit `1d64f25` for the bug shape.
-3. **`KeyboardSink::Drop` and the panic hook in `app.rs` must run
-   `release_all_held` unconditionally.** They are the last-line defence
-   against stuck keys when the process dies. `release_all_held` never
-   waits on `min_press_ms` — shutdown beats anti-cheat profile.
+   list every button id `0..=28`.** Missing ids are a user error, not a
+   silent skip — except for the v2.1.0 touchpad-quadrant additions
+   (25..=28), which the load path auto-fills as `Unbound` so v2.0
+   configs continue to parse. The validator itself still requires the
+   full range to be present; auto-fill happens before validation, not
+   inside it.
+2. **`safety.rs` is the single source of truth for "what keys (and
+   mouse buttons) are physically pressed right now."** `keyboard.rs`
+   always asks `KeyState::press` / `release` for the edge transition
+   and only forwards a real synth on `Edge::Press` / `Edge::Release`.
+   `mouse.rs` mirrors this through `press_mouse` / `release_mouse`.
+   Bypassing this leaks a stuck KEYDOWN or MOUSEDOWN — see commit
+   `1d64f25` for the keyboard bug shape; the mouse half landed in
+   v2.1.0.
+3. **`KeyboardSink::Drop`, `MouseSink::Drop`, and the panic hook in
+   `app.rs` must run `release_all_held` unconditionally.** They are
+   the last-line defence against stuck keys / stuck mouse buttons when
+   the process dies. `release_all_held` releases every held key **and**
+   every held mouse button, and never waits on `min_press_ms` —
+   shutdown beats anti-cheat profile.
 4. **Macro threads drain every unmatched `Press` as `Release` on every
    exit path** (cancel flag, no-repeat completion, channel close). A
    macro cancelled between Press Left and the scheduled Release Left
