@@ -151,7 +151,7 @@ mod tests {
 
     fn cfg_with_overrides(mut overrides: Vec<(u32, Binding)>) -> Config {
         let mut buttons = BTreeMap::new();
-        for id in 0u32..=24 {
+        for id in crate::config::VALID_BUTTON_IDS {
             buttons.insert(id.to_string(), ButtonEntry {
                 label: format!("b{id}"),
                 binding: Binding::Unbound,
@@ -175,6 +175,8 @@ mod tests {
             tick_jitter_ms: [0, 3],
             log_events: false,
             buttons, macros,
+            touchpad_cursor_enabled: true,
+            touchpad_cursor_sensitivity: 1.5,
         }
     }
 

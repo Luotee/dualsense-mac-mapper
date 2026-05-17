@@ -4,7 +4,7 @@
 //! round-trip of `_help`, `_keyboard_keys`, and any future "_*" doc fields.
 //! We carry both.
 
-use crate::config::{ButtonEntry, Config, MacroDef};
+use crate::config::{Binding, ButtonEntry, Config, MacroDef, TOUCHPAD_QUADRANT_IDS};
 use anyhow::{anyhow, Context, Result};
 use serde_json::Value;
 use std::collections::BTreeMap;
@@ -19,19 +19,21 @@ impl ConfigDoc {
     pub fn load(path: &Path) -> Result<Self> {
         let bytes = std::fs::read_to_string(path)
             .with_context(|| format!("reading {}", path.display()))?;
-        let raw: Value = serde_json::from_str(&bytes)
+        let mut raw: Value = serde_json::from_str(&bytes)
             .with_context(|| format!("parsing {} as JSON", path.display()))?;
-        let typed: Config = serde_json::from_value(raw.clone())
+        let mut typed: Config = serde_json::from_value(raw.clone())
             .with_context(|| format!("typed-parsing {}", path.display()))?;
+        migrate_touchpad_ids(&mut typed, &mut raw);
         typed.validate()?;
         Ok(Self { raw, typed })
     }
 
     /// Build a `ConfigDoc` from an already-typed value tree. Used by tests
     /// that seed a known config without touching the filesystem first.
-    pub fn load_from_value(raw: Value) -> Result<Self> {
-        let typed: Config =
+    pub fn load_from_value(mut raw: Value) -> Result<Self> {
+        let mut typed: Config =
             serde_json::from_value(raw.clone()).context("typed-parsing in-memory config")?;
+        migrate_touchpad_ids(&mut typed, &mut raw);
         typed.validate()?;
         Ok(Self { raw, typed })
     }
@@ -98,6 +100,29 @@ impl ConfigDoc {
 /// Calls `doc.validate()` first — returns an error without touching the
 /// filesystem if validation fails.  Otherwise writes to a sibling `.tmp`
 /// file and renames it into place so readers never see a partial write.
+/// Migrate v2.0 → v2.1 by inserting missing touchpad quadrant ids
+/// (25..=28) as `Unbound` into both the typed and the raw JSON view.
+/// The raw patch keeps the next `write_atomic` round-trip honest.
+fn migrate_touchpad_ids(typed: &mut Config, raw: &mut Value) {
+    typed.fill_touchpad_defaults();
+    let labels = ["Touchpad TL", "Touchpad TR", "Touchpad BL", "Touchpad BR"];
+    for (id, label) in TOUCHPAD_QUADRANT_IDS.iter().zip(labels.iter()) {
+        let key = id.to_string();
+        if raw["buttons"][&key].is_null() {
+            raw["buttons"][&key] = serde_json::to_value(&ButtonEntry {
+                label: (*label).to_string(),
+                binding: Binding::Unbound,
+            }).unwrap();
+        }
+    }
+    if raw["touchpad_cursor_enabled"].is_null() {
+        raw["touchpad_cursor_enabled"] = Value::from(typed.touchpad_cursor_enabled);
+    }
+    if raw["touchpad_cursor_sensitivity"].is_null() {
+        raw["touchpad_cursor_sensitivity"] = Value::from(typed.touchpad_cursor_sensitivity);
+    }
+}
+
 pub fn write_atomic(target: &Path, doc: &ConfigDoc) -> Result<()> {
     doc.validate().with_context(|| "validating before write")?;
     let mut tmp: PathBuf = target.to_path_buf();
