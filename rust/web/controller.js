@@ -366,10 +366,13 @@ function mkArrow(ns, cx, cy, dir, cls) {
   //         │      │     <- parallel vertical sides (R_outer → R_shoulder)
   //          \    /      <- 45° apex sides
   //            v         <- apex tip (R_inner)
-  const R_inner    = 3;    // apex tip, closest point to d-pad centre
-  const half_w     = 5;    // half-width of the body
-  const R_shoulder = R_inner + half_w; // = 8, enforces 45° apex sides
-  const R_outer    = 14;   // flat base far edge, from d-pad centre
+  // Tuned via tools/controller_tuner.html on 2026-05-17: tighter
+  // cluster + narrower gap aligned with the 2-unit L1↔L2 spacing.
+  // gap = R_inner · √2 ≈ 3.82, length × width = 10.5 × 6.8 (ratio 1.54).
+  const R_inner    = 2.70;
+  const half_w     = 3.40;
+  const R_shoulder = R_inner + half_w; // = 6.10, enforces 45° apex sides
+  const R_outer    = 13.20;
 
   const up = [
     [-half_w, -R_outer],     // outer base left
@@ -378,11 +381,15 @@ function mkArrow(ns, cx, cy, dir, cls) {
     [0,       -R_inner],     // apex (toward centre)
     [-half_w, -R_shoulder],  // shoulder left
   ];
+  // Proper rotations (not reflections) so arc sweep direction is
+  // preserved when this same map is reused inside `mkQuarter`. Down was
+  // previously `(x, -y)` (reflection across x-axis) which flipped the
+  // path winding — see v1.1.3 release notes.
   const map = {
-    up:    ([x, y]) => [x,  y],
-    down:  ([x, y]) => [x, -y],
-    left:  ([x, y]) => [y,  x],
-    right: ([x, y]) => [-y, x],
+    up:    ([x, y]) => [ x,  y],   // 0°
+    right: ([x, y]) => [-y,  x],   // 90° CW
+    down:  ([x, y]) => [-x, -y],   // 180°
+    left:  ([x, y]) => [ y, -x],   // 90° CCW
   }[dir];
 
   const pts = up
@@ -398,13 +405,25 @@ function mkArrow(ns, cx, cy, dir, cls) {
 }
 
 /**
- * Trapezoid hit zone around a stick well. Outer base is flat
- * (perpendicular to the direction), inner base is flat and closer to
- * the stick well, the two side edges are strictly 45° lines. Adjacent
- * trapezoids' diagonal edges lie on parallel lines, so the gap
- * between every pair of adjacent quarters is uniformly `g * √2`
- * along the diagonal — same parallel-gap geometry the d-pad pentagon
- * uses (`mkArrow`).
+ * Donut quarter hit zone around a stick well — outer + inner arcs,
+ * with the two SIDE boundaries being parallel chord-lines instead of
+ * radii. Adjacent quarters' side chords are offset on opposite sides
+ * of the same diagonal, so the gap between every pair of adjacent
+ * quarters is uniformly `g · √2` along the perpendicular.
+ *
+ * Geometry (local stick-centre coords, "up" canonical):
+ *   - Right side line: y = -x - d   (parallel to 135° diagonal)
+ *   - Left  side line: y =  x - d   (parallel to 45° diagonal)
+ *   - Outer arc:       x² + y² = r_out²
+ *   - Inner arc:       x² + y² = r_in²
+ *   where d > 0 pushes both side lines toward UP.
+ *
+ * Vertices for "up" come out symmetric in x:
+ *   outer-right = ( x_out, -x_out - d ),
+ *   outer-left  = (-x_out, -x_out - d ),
+ *   inner-left  = (-x_in,  -x_in  - d ),
+ *   inner-right = ( x_in,  -x_in  - d ),
+ * where x = (-d + √(2r² - d²)) / 2 for radius r.
  *
  * @param {string} ns
  * @param {number} cx   - Stick centre X
@@ -414,20 +433,25 @@ function mkArrow(ns, cx, cy, dir, cls) {
  * @returns {SVGPathElement}
  */
 function mkQuarter(ns, cx, cy, dir, cls) {
-  const r_in  = 10;   // inner base, just outside the stick-well ring (r=9)
-  const r_out = 17;   // outer base, far edge
-  const g     = 2;    // perpendicular gap half-width along the diagonals
-  const k     = g * Math.SQRT2 / 2;  // chord offset to push the diagonals in
+  // Tuned via tools/controller_tuner.html on 2026-05-17: thinner donut
+  // ring (3.5 wide instead of 7) with a narrower 1.7·√2 ≈ 2.4 gap, to
+  // match the L1↔L2 spacing the user picked as the visual reference.
+  const r_in  = 11.60;  // inner arc, just outside the stick-well ring (r=9)
+  const r_out = 15.10;  // outer arc, reach into the live-press area
+  const d     = 1.70;   // perpendicular offset of the side chord from origin
 
-  // Canonical "up" trapezoid in stick-local coordinates.
-  // Outer corners sit at x = ±(r_out - k); inner corners at x = ±(r_in - k).
-  // The side from (r_out - k, -r_out) to (r_in - k, -r_in) has slope −1
-  // (since Δy = r_out − r_in, Δx = −(r_out − r_in)), i.e. 45°.
-  const up = [
-    [-(r_out - k), -r_out],  // outer-left
-    [ (r_out - k), -r_out],  // outer-right
-    [ (r_in  - k), -r_in ],  // inner-right
-    [-(r_in  - k), -r_in ],  // inner-left
+  // x-coordinate where the line y = -x - d meets a circle of radius r.
+  const xAt = (r) => (-d + Math.sqrt(2 * r * r - d * d)) / 2;
+  const x_out = xAt(r_out);
+  const x_in  = xAt(r_in);
+
+  // Canonical "up" quarter vertices (start at outer-right, go CCW so
+  // the outer arc travels through the top of the circle).
+  const upVerts = [
+    [ x_out, -x_out - d],  // outer-right (on right chord ∩ outer arc)
+    [-x_out, -x_out - d],  // outer-left  (on left chord  ∩ outer arc)
+    [-x_in,  -x_in  - d],  // inner-left  (on left chord  ∩ inner arc)
+    [ x_in,  -x_in  - d],  // inner-right (on right chord ∩ inner arc)
   ];
   const map = {
     up:    ([x, y]) => [x,  y],
@@ -435,15 +459,22 @@ function mkQuarter(ns, cx, cy, dir, cls) {
     left:  ([x, y]) => [y,  x],
     right: ([x, y]) => [-y, x],
   }[dir];
+  const [vO_R, vO_L, vI_L, vI_R] = upVerts.map(map).map(
+    ([dx, dy]) => [cx + dx, cy + dy]);
 
-  const pts = up
-    .map(map)
-    .map(([dx, dy]) => `${cx + dx} ${cy + dy}`)
-    .join(' L ');
-  const d = `M ${pts} Z`;
+  // SVG arc sweep flag picks the short way round. Outer arc travels
+  // through the direction's outer tip (e.g. straight up for `up`);
+  // inner arc travels the opposite sense back.
+  const pathD = [
+    `M ${vO_R[0]} ${vO_R[1]}`,
+    `A ${r_out} ${r_out} 0 0 0 ${vO_L[0]} ${vO_L[1]}`,
+    `L ${vI_L[0]} ${vI_L[1]}`,
+    `A ${r_in}  ${r_in}  0 0 1 ${vI_R[0]} ${vI_R[1]}`,
+    'Z',
+  ].join(' ');
 
   const p = document.createElementNS(ns, 'path');
-  p.setAttribute('d',     d);
+  p.setAttribute('d',     pathD);
   p.setAttribute('class', cls);
   return p;
 }

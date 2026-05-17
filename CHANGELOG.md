@@ -3,6 +3,31 @@
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/);
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.3] - 2026-05-17
+
+### Changed
+
+- **D-pad pentagon + stick donut quarter retuned via the new
+  interactive tuner.** v1.1.2 had the d-pad pentagons too sparse and
+  the stick donut rings too thick / too gapped. The user dialed both
+  in against the 2 SVG-unit L1↔L2 spacing as a visual reference using
+  `tools/controller_tuner.html`. New values:
+  - D-pad pentagon: `R_inner=2.70`, `half_w=3.40`, `R_outer=13.20`
+    (gap = 3.82, length×width = 10.5×6.8, ratio 1.54).
+  - Stick donut quarter: `r_in=11.60`, `r_out=15.10`, `d=1.70`
+    (thickness = 3.5, gap = 2.40).
+
+### Added
+
+- **`tools/controller_tuner.html`** — self-contained interactive
+  geometry tuner. Sliders for every hit-zone and sprite parameter in
+  `rust/web/controller.js`; live SVG re-render on every input event;
+  Export button generates a paste-ready snippet of the tuned values.
+  Bookmark this file for future visual tweaks — it's tracked in the
+  repo as a permanent design tool.
+
+[1.1.3]: https://github.com/Luotee/dualsense-mac-mapper/releases/tag/v1.1.3
+
 ## [1.1.2] - 2026-05-17
 
 ### Fixed
