@@ -36,6 +36,13 @@ const TOUCHPAD = { x: 101, y: 36, w: 38, h: 16, rx: 5 };
 // designer wants a tighter or wider cross-line.
 const TOUCHPAD_QUAD_GAP = 1.5;
 
+// Issue 7: subtle rounded corners for D-pad wedges + stick donut quarters.
+// 0 = sharp (v2.0.0 behaviour). Tuned to ~0.8 to match L1 button feel.
+export const CORNER_RADIUS = {
+  dpad: 0.8,
+  stickSlice: 0.7,
+};
+
 // Stick well centres
 const L_STICK = { cx: 84,  cy: 82, r: 9 };
 const R_STICK = { cx: 156, cy: 82, r: 9 };
@@ -559,11 +566,8 @@ function mkArrow(ns, cx, cy, dir, cls) {
     left:  ([x, y]) => [ y, -x],   // 90° CCW
   }[dir];
 
-  const pts = up
-    .map(map)
-    .map(([dx, dy]) => `${cx + dx} ${cy + dy}`)
-    .join(' L ');
-  const d = `M ${pts} Z`;
+  const rotated = up.map(map).map(([dx, dy]) => [cx + dx, cy + dy]);
+  const d = buildRoundedPolygonPath(rotated, CORNER_RADIUS.dpad, [0, 1]);
 
   const p = document.createElementNS(ns, 'path');
   p.setAttribute('d',     d);
@@ -636,16 +640,122 @@ function mkQuarter(ns, cx, cy, dir, cls) {
   // SVG arc sweep flag picks the short way round. Outer arc travels
   // through the direction's outer tip (e.g. straight up for `up`);
   // inner arc travels the opposite sense back.
-  const pathD = [
-    `M ${vO_R[0]} ${vO_R[1]}`,
-    `A ${r_out} ${r_out} 0 0 0 ${vO_L[0]} ${vO_L[1]}`,
-    `L ${vI_L[0]} ${vI_L[1]}`,
-    `A ${r_in}  ${r_in}  0 0 1 ${vI_R[0]} ${vI_R[1]}`,
-    'Z',
-  ].join(' ');
+  const rr = CORNER_RADIUS.stickSlice;
+  const pathD = buildRoundedQuarterPath(vO_R, vO_L, vI_L, vI_R, r_out, r_in, rr);
 
   const p = document.createElementNS(ns, 'path');
   p.setAttribute('d',     pathD);
   p.setAttribute('class', cls);
   return p;
+}
+
+// ─── Rounded corner helpers ───────────────────────────────────────────────────
+
+/**
+ * Build an SVG path for an arbitrary closed polygon with selected corners
+ * rounded via quadratic Bezier inset.
+ *
+ * @param {Array<[number, number]>} verts - vertex coordinates in order
+ * @param {number} rr                     - corner radius (0 = sharp)
+ * @param {Array<number>} roundIdx        - indexes (into verts) of corners to round
+ * @returns {string} SVG path d-attribute
+ */
+function buildRoundedPolygonPath(verts, rr, roundIdx) {
+  const n = verts.length;
+  if (rr <= 0 || roundIdx.length === 0) {
+    return 'M ' + verts.map(([x, y]) => `${x} ${y}`).join(' L ') + ' Z';
+  }
+  const shouldRound = new Set(roundIdx);
+  // For each vertex P, compute the inset points along P→prev and P→next
+  // (only if P is in roundIdx). Otherwise the segment ends/begins at P itself.
+  const segs = [];
+  for (let i = 0; i < n; i++) {
+    const prev = verts[(i - 1 + n) % n];
+    const cur  = verts[i];
+    const next = verts[(i + 1) % n];
+    if (!shouldRound.has(i)) {
+      segs.push({ start: cur, end: cur, control: null });
+      continue;
+    }
+    // Inset toward prev and toward next by rr.
+    const towardPrev = insetAlong(cur, prev, rr);
+    const towardNext = insetAlong(cur, next, rr);
+    segs.push({ start: towardPrev, end: towardNext, control: cur });
+  }
+  // Build path: start at first segment's start (if rounded) or first vertex.
+  // Then for each vertex: L to seg.start (the inset-from-prev), Q cur seg.end (if rounded).
+  let d = `M ${formatPt(segs[0].start)}`;
+  for (let i = 0; i < n; i++) {
+    const s = segs[i];
+    if (s.control !== null) {
+      // Round: Q from current point through control (corner) to seg.end (inset toward next).
+      d += ` Q ${formatPt(s.control)} ${formatPt(s.end)}`;
+    }
+    // L to next segment's start.
+    const nextSeg = segs[(i + 1) % n];
+    if (nextSeg.start !== s.end || s.control === null) {
+      d += ` L ${formatPt(nextSeg.start)}`;
+    }
+  }
+  d += ' Z';
+  return d;
+}
+
+function insetAlong(from, to, rr) {
+  const dx = to[0] - from[0];
+  const dy = to[1] - from[1];
+  const len = Math.hypot(dx, dy);
+  if (len < rr * 2) return [...from];  // edge too short to inset cleanly
+  return [from[0] + (dx / len) * rr, from[1] + (dy / len) * rr];
+}
+
+function formatPt(p) {
+  return `${p[0].toFixed(3)} ${p[1].toFixed(3)}`;
+}
+
+/**
+ * Build an SVG path for a rounded donut quarter slice.
+ * Vertices in CCW order: outer-right (vOR), outer-left (vOL), inner-left (vIL), inner-right (vIR).
+ * Outer arc connects vOR → vOL through the outer tip.
+ * Inner arc connects vIL → vIR through the inner tip.
+ *
+ * For each corner, the inset along an arc edge uses chord direction
+ * (approximation valid for rr <= 5 visually).
+ */
+function buildRoundedQuarterPath(vOR, vOL, vIL, vIR, rOut, rIn, rr) {
+  if (rr <= 0) {
+    return [
+      `M ${vOR[0]} ${vOR[1]}`,
+      `A ${rOut} ${rOut} 0 0 0 ${vOL[0]} ${vOL[1]}`,
+      `L ${vIL[0]} ${vIL[1]}`,
+      `A ${rIn}  ${rIn}  0 0 1 ${vIR[0]} ${vIR[1]}`,
+      'Z',
+    ].join(' ');
+  }
+  // Inset each corner along its two incident edges.
+  // vOR neighbours: outer-arc toward vOL (chord-approx), and line-edge toward vIR.
+  // vOL neighbours: outer-arc toward vOR, and line-edge toward vIL.
+  // vIL neighbours: line-edge toward vOL, and inner-arc toward vIR.
+  // vIR neighbours: inner-arc toward vIL, and line-edge toward vOR.
+  const vOR_toOL  = insetAlong(vOR, vOL, rr);
+  const vOR_toIR  = insetAlong(vOR, vIR, rr);
+  const vOL_toOR  = insetAlong(vOL, vOR, rr);
+  const vOL_toIL  = insetAlong(vOL, vIL, rr);
+  const vIL_toOL  = insetAlong(vIL, vOL, rr);
+  const vIL_toIR  = insetAlong(vIL, vIR, rr);
+  const vIR_toIL  = insetAlong(vIR, vIL, rr);
+  const vIR_toOR  = insetAlong(vIR, vOR, rr);
+  // Path: start at vOR's outer-arc-side inset, arc to vOL's outer-arc-side inset (smaller sweep since insets shorten the arc).
+  return [
+    `M ${formatPt(vOR_toOL)}`,
+    `A ${rOut} ${rOut} 0 0 0 ${formatPt(vOL_toOR)}`,
+    `Q ${formatPt(vOL)} ${formatPt(vOL_toIL)}`,
+    `L ${formatPt(vIL_toOL)}`,
+    `Q ${formatPt(vIL)} ${formatPt(vIL_toIR)}`,
+    `A ${rIn}  ${rIn}  0 0 1 ${formatPt(vIR_toIL)}`,
+    `Q ${formatPt(vIR)} ${formatPt(vIR_toOR)}`,
+    `L ${formatPt(vOR_toIR)}`,
+    `Q ${formatPt(vOR)} ${formatPt(vOR_toOL)}`,
+    'Z',
+  ].join(' ');
 }
