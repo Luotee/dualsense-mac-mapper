@@ -458,3 +458,15 @@ pub fn set_ui_prefs(
     )
     .map_err(|e| format!("{e:#}"))
 }
+
+/// Tauri command: return the build-time `CARGO_PKG_VERSION`.
+///
+/// Iron rule #10 (v1.2.0): the Settings → About box must read the
+/// Cargo version at runtime. Hardcoding a string in `settings.js` is
+/// how v1.0.4–v1.1.4 shipped with stale "v0.2.0" displayed under the
+/// version bumps.
+#[cfg(feature = "gui")]
+#[tauri::command]
+pub fn get_app_version() -> &'static str {
+    env!("CARGO_PKG_VERSION")
+}

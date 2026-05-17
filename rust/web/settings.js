@@ -1,11 +1,15 @@
 import { invoke, listen } from './ipc.js';
 
 let current = null;   // the Settings struct as loaded from get_config
-
-const APP_VERSION = '0.2.0';
+let appVersion = '';  // populated from `get_app_version` on init
 
 export async function init() {
   await reload();
+  try {
+    appVersion = await invoke('get_app_version');
+  } catch (_) {
+    appVersion = '?';
+  }
   render();
   listen('config-changed', async () => { await reload(); render(); });
 }
@@ -83,7 +87,7 @@ function render() {
     <div class="settings-about">
       <h4>About</h4>
       <p>
-        <strong>DualSense Mapper</strong> v${APP_VERSION}<br>
+        <strong>DualSense Mapper</strong> v${appVersion}<br>
         Built with <a href="https://tauri.app/" target="_blank" rel="noreferrer">Tauri</a>.
         See the <a href="https://github.com/Luotee/dualsense-mac-mapper/releases" target="_blank" rel="noreferrer">GitHub releases</a> for changelog and updates.
       </p>
