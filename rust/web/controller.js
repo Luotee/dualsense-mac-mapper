@@ -341,6 +341,60 @@ export function showTouchpadDot(svg, raw_x, raw_y) {
   }, 1200);
 }
 
+// ─── Touchpad hover preview ───────────────────────────────────────────────────
+//
+// Issue 3: continuous hover preview. While the finger is active, the engine
+// emits 'touchpad-hover' per frame on quadrant change (dedupe-on-change),
+// and on lift emits a sentinel `quadrant=255`. The frontend highlights the
+// active quadrant and renders a persistent debug dot at the raw position.
+// Distinct from `showTouchpadDot` (transient post-click) — this one updates
+// live and persists while the finger is down.
+
+let _hoverDot = null;
+
+/**
+ * Highlight quadrant `quadrantId` (25..=28) and move a persistent debug dot
+ * to the proportional position of (rawX, rawY) inside the touchpad bbox.
+ */
+export function showTouchpadHover(svg, quadrantId, rawX, rawY) {
+  if (!svg) return;
+  // Highlight: add `hover` class to the matching quadrant, remove from others.
+  for (const id of [25, 26, 27, 28]) {
+    const el = svg.querySelector(`[data-id="${id}"]`);
+    if (!el) continue;
+    if (id === quadrantId) el.classList.add('hover');
+    else                   el.classList.remove('hover');
+  }
+  // Debug dot: live-updated while finger is down.
+  const ns = 'http://www.w3.org/2000/svg';
+  if (!_hoverDot || !_hoverDot.parentNode) {
+    _hoverDot = document.createElementNS(ns, 'circle');
+    _hoverDot.setAttribute('r', '1.0');
+    _hoverDot.setAttribute('class', 'touchpad-hover-dot');
+    svg.appendChild(_hoverDot);
+  }
+  const cx = TOUCHPAD.x + (rawX / TOUCHPAD_RAW_MAX_X) * TOUCHPAD.w;
+  const cy = TOUCHPAD.y + (rawY / TOUCHPAD_RAW_MAX_Y) * TOUCHPAD.h;
+  _hoverDot.setAttribute('cx', String(cx));
+  _hoverDot.setAttribute('cy', String(cy));
+}
+
+/**
+ * Clear the hover highlight and remove the debug dot. Called on finger
+ * lift (engine sentinel `quadrant=255`).
+ */
+export function clearTouchpadHover(svg) {
+  if (!svg) return;
+  for (const id of [25, 26, 27, 28]) {
+    const el = svg.querySelector(`[data-id="${id}"]`);
+    if (el) el.classList.remove('hover');
+  }
+  if (_hoverDot && _hoverDot.parentNode) {
+    _hoverDot.remove();
+  }
+  _hoverDot = null;
+}
+
 // ─── Selection ring ───────────────────────────────────────────────────────────
 
 let _selectionRing = null;

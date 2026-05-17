@@ -84,6 +84,14 @@ function hookLiveHighlight() {
   listen('touchpad-click', payload => {
     controller.showTouchpadDot(svgEl, payload.raw_x, payload.raw_y);
   });
+  listen('touchpad-hover', payload => {
+    // Sentinel: quadrant=255 means finger lifted.
+    if (payload.quadrant === 255) {
+      controller.clearTouchpadHover(svgEl);
+    } else {
+      controller.showTouchpadHover(svgEl, payload.quadrant, payload.raw_x, payload.raw_y);
+    }
+  });
 }
 
 function listenConfigChanged() {
