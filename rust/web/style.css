@@ -551,3 +551,13 @@ body { position: relative; }
 }
 .btn-disconnect:hover { background: #3a3a3a; }
 .btn-disconnect:active { background: #1a1a1a; }
+
+/* PS5 silhouette decorations */
+.light-bar {
+  fill: none;
+  stroke: rgba(80, 140, 255, 0.4);
+  stroke-width: 0.5;
+}
+.mic-slot {
+  fill: rgba(0, 0, 0, 0.4);
+}

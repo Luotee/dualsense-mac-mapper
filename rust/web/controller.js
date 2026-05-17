@@ -24,13 +24,47 @@
 
 const VIEWBOX = '0 0 240 130';
 
-// Body silhouette: stylised pill with grip lobes at the bottom.
+// Body silhouette: organic twin-grip form with curved top and prominent
+// lower handle lobes. Approximates a generic modern game-controller top
+// view (DualSense-class), drawn with quadratic curves at all corners.
 const BODY_PATH =
-  'M 50 30 Q 38 30 36 50 Q 32 80 62 92 Q 75 102 95 102 ' +
-  'L 145 102 Q 165 102 178 92 Q 208 80 204 50 Q 202 30 190 30 L 50 30 Z';
+  'M 60 28 ' +
+  'Q 44 28 40 38 ' +
+  'Q 30 50 30 64 ' +
+  'Q 30 84 50 96 ' +
+  'Q 58 108 72 112 ' +
+  'Q 86 114 94 108 ' +
+  'L 146 108 ' +
+  'Q 154 114 168 112 ' +
+  'Q 182 108 190 96 ' +
+  'Q 210 84 210 64 ' +
+  'Q 210 50 200 38 ' +
+  'Q 196 28 180 28 ' +
+  'L 60 28 Z';
 
-// Touchpad shape: rounded rect centred at (120, 44).
-const TOUCHPAD = { x: 101, y: 36, w: 38, h: 16, rx: 5 };
+// Trigger horns: small curved caps above the L2/R2 shoulder area,
+// extending upward to evoke the back-side trigger volume seen from
+// the top. Purely decorative; the L1/R1/L2/R2 hit zones are separate.
+const TRIGGER_HORN_L_PATH =
+  'M 44 28 L 76 28 Q 80 26 80 20 ' +
+  'Q 80 8 74 6 L 50 6 Q 44 8 42 18 Q 42 26 44 28 Z';
+const TRIGGER_HORN_R_PATH =
+  'M 196 28 L 164 28 Q 160 26 160 20 ' +
+  'Q 160 8 166 6 L 190 6 Q 196 8 198 18 Q 198 26 196 28 Z';
+
+// Light bar seam: a thin contour outlining the touchpad recess. Sits
+// just outside the touchpad rect so the bound-quadrant fill colours
+// show inside, while the seam itself reads as the visible boundary
+// between the upper / lower halves of the body.
+const LIGHT_BAR_PATH =
+  'M 96 34 Q 96 30 100 30 L 140 30 Q 144 30 144 34 ' +
+  'L 144 56 Q 144 60 140 60 L 100 60 Q 96 60 96 56 Z';
+
+// Microphone slot decoration — small rect centred between the sticks.
+const MIC_RECT = { x: 118, y: 96, w: 4, h: 1.5 };
+
+// Touchpad shape: inside LIGHT_BAR boundary with ~2px padding.
+const TOUCHPAD = { x: 100, y: 34, w: 40, h: 24, rx: 4 };
 // Gap between adjacent touchpad quadrants — matches the visual spacing
 // pattern used by the d-pad pentagons and stick wedges. Tune here if a
 // designer wants a tighter or wider cross-line.
@@ -61,8 +95,8 @@ function applyButtonOverride(shape, id) {
 }
 
 // Stick well centres
-const L_STICK = { cx: 84,  cy: 82, r: 9 };
-const R_STICK = { cx: 156, cy: 82, r: 9 };
+const L_STICK = { cx: 92,  cy: 88, r: 8 };
+const R_STICK = { cx: 148, cy: 88, r: 8 };
 
 // ─── Element descriptors ──────────────────────────────────────────────────────
 //
@@ -72,19 +106,16 @@ const R_STICK = { cx: 156, cy: 82, r: 9 };
 
 function elements() {
   return [
-    // Triggers (top) — same dimensions as the shoulders below, and the
-    // vertical gap between trigger / shoulder / body is uniformly 2 px
-    // (L2 ends at y=20, L1 starts y=22; L1 ends y=28, body top y=30).
-    el(23, 'trigger',    { rx: 48,  ry: 14, w: 22, h: 6 },  'L2'),
-    el(24, 'trigger',    { rx: 170, ry: 14, w: 22, h: 6 },  'R2'),
+    // Triggers — match horn positions
+    el(23, 'trigger',    { rx: 48,  ry: 12, w: 22, h: 5 },  'L2'),
+    el(24, 'trigger',    { rx: 170, ry: 12, w: 22, h: 5 },  'R2'),
+    // Shoulders just below trigger horns
+    el(9,  'shoulder',   { rx: 48,  ry: 21, w: 22, h: 5 },  'L1'),
+    el(10, 'shoulder',   { rx: 170, ry: 21, w: 22, h: 5 },  'R1'),
 
-    // Shoulders (just below triggers, on body's top edge)
-    el(9,  'shoulder',   { rx: 48,  ry: 22, w: 22, h: 6 },  'L1'),
-    el(10, 'shoulder',   { rx: 170, ry: 22, w: 22, h: 6 },  'R1'),
-
-    // Meta buttons (Share / Options)
-    el(4,  'meta_rect',  { rx: 82,  ry: 38, w: 7,  h: 3 },  'Share'),
-    el(6,  'meta_rect',  { rx: 151, ry: 38, w: 7,  h: 3 },  'Options'),
+    // Meta buttons flank the touchpad
+    el(4,  'meta_rect',  { rx: 82,  ry: 36, w: 7,  h: 2.5 },  'Share'),
+    el(6,  'meta_rect',  { rx: 151, ry: 36, w: 7,  h: 2.5 },  'Options'),
 
     // Touchpad — 4 quadrant hit zones with a centre-cross gap matching
     // the d-pad / stick-wedge spacing convention. Each quadrant shrinks
@@ -92,24 +123,20 @@ function elements() {
     // render() shows through the gap so the visual centre-line reads.
     ...touchpadQuadElements(),
 
-    // PS logo button (centre, below touchpad)
-    el(5,  'circle',     { cx: 120, cy: 62, r: 3 },          'PS'),
+    // PS logo button — slightly lower, between sticks
+    el(5,  'circle',     { cx: 120, cy: 88, r: 2.5 },         'PS'),
 
-    // D-pad: four label-shaped pentagons (flat base outward, apex
-    // pointing toward the centre). Replaces the v1.1.0 cross sprite +
-    // outward-arrow wedges — the user wanted the d-pad to read like
-    // four independent face-button-style targets, with no underlying
-    // cross silhouette competing for attention.
-    el(11, 'dpad_wedge', { cx: 59, cy: 57, dir: 'up'    },   'D-up'),
-    el(12, 'dpad_wedge', { cx: 59, cy: 57, dir: 'down'  },   'D-down'),
-    el(13, 'dpad_wedge', { cx: 59, cy: 57, dir: 'left'  },   'D-left'),
-    el(14, 'dpad_wedge', { cx: 59, cy: 57, dir: 'right' },   'D-right'),
+    // D-pad — slightly inboard/lower to match top-view proportions
+    el(11, 'dpad_wedge', { cx: 64, cy: 60, dir: 'up'    },   'D-up'),
+    el(12, 'dpad_wedge', { cx: 64, cy: 60, dir: 'down'  },   'D-down'),
+    el(13, 'dpad_wedge', { cx: 64, cy: 60, dir: 'left'  },   'D-left'),
+    el(14, 'dpad_wedge', { cx: 64, cy: 60, dir: 'right' },   'D-right'),
 
-    // Face buttons (right diamond)
-    el(3,  'face',       { cx: 184, cy: 50, r: 4 },           'Triangle'),  // top
-    el(1,  'face',       { cx: 192, cy: 58, r: 4 },           'Circle'),    // right
-    el(0,  'face',       { cx: 184, cy: 66, r: 4 },           'Cross'),     // bottom
-    el(2,  'face',       { cx: 176, cy: 58, r: 4 },           'Square'),    // left
+    // Face buttons (right diamond) — mirror of D-pad position
+    el(3,  'face',       { cx: 176, cy: 52, r: 4 },           'Triangle'),
+    el(1,  'face',       { cx: 184, cy: 60, r: 4 },           'Circle'),
+    el(0,  'face',       { cx: 176, cy: 68, r: 4 },           'Cross'),
+    el(2,  'face',       { cx: 168, cy: 60, r: 4 },           'Square'),
 
     // L stick well sprite (no hit zone)
     { sprite: 'stick_well', side: 'L', c: L_STICK },
@@ -198,10 +225,31 @@ export function render(parent, bindings) {
   body.classList.add('body');
   svg.appendChild(body);
 
+  // Trigger horns
+  const hornL = document.createElementNS(ns, 'path');
+  hornL.setAttribute('d', TRIGGER_HORN_L_PATH);
+  hornL.classList.add('body');
+  svg.appendChild(hornL);
+  const hornR = document.createElementNS(ns, 'path');
+  hornR.setAttribute('d', TRIGGER_HORN_R_PATH);
+  hornR.classList.add('body');
+  svg.appendChild(hornR);
+
   // Touchpad decorative shape
   const tp = mkRect(ns, TOUCHPAD.x, TOUCHPAD.y, TOUCHPAD.w, TOUCHPAD.h, 'touchpad');
   tp.setAttribute('rx', String(TOUCHPAD.rx));
   svg.appendChild(tp);
+
+  // Light bar seam — decorative thin contour around touchpad area.
+  const bar = document.createElementNS(ns, 'path');
+  bar.setAttribute('d', LIGHT_BAR_PATH);
+  bar.classList.add('light-bar');
+  svg.appendChild(bar);
+
+  // Microphone slot decoration
+  const mic = mkRect(ns, MIC_RECT.x, MIC_RECT.y, MIC_RECT.w, MIC_RECT.h, 'mic-slot');
+  mic.setAttribute('rx', '0.6');
+  svg.appendChild(mic);
 
   // Render each element descriptor
   for (const e of elements()) {

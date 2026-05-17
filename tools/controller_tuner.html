@@ -35,6 +35,7 @@
   .body       { fill: var(--card); stroke: var(--border); stroke-width: 1.4; }
   .touchpad   { fill: var(--bg);   stroke: var(--border); stroke-width: 1; }
   .stick-ring { fill: var(--bg);   stroke: var(--border); stroke-width: 1.4; }
+  .light-bar  { fill: none; stroke: rgba(80, 140, 255, 0.4); stroke-width: 0.5; }
   .meta-rect  { fill: var(--bg);   stroke: var(--muted); stroke-opacity: 0.6; }
   .hit        { stroke: var(--border); stroke-width: 1; }
   .binding-key   { fill: var(--accent); fill-opacity: 0.85; stroke: var(--accent); }
@@ -182,40 +183,44 @@
 <script>
 const NS = 'http://www.w3.org/2000/svg';
 const BODY_PATH =
-  'M 50 30 Q 38 30 36 50 Q 32 80 62 92 Q 75 102 95 102 ' +
-  'L 145 102 Q 165 102 178 92 Q 208 80 204 50 Q 202 30 190 30 L 50 30 Z';
+  'M 60 28 ' +
+  'Q 44 28 40 38 ' +
+  'Q 30 50 30 64 ' +
+  'Q 30 84 50 96 ' +
+  'Q 58 108 72 112 ' +
+  'Q 86 114 94 108 ' +
+  'L 146 108 ' +
+  'Q 154 114 168 112 ' +
+  'Q 182 108 190 96 ' +
+  'Q 210 84 210 64 ' +
+  'Q 210 50 200 38 ' +
+  'Q 196 28 180 28 ' +
+  'L 60 28 Z';
+const TRIGGER_HORN_L_PATH =
+  'M 44 28 L 76 28 Q 80 26 80 20 ' +
+  'Q 80 8 74 6 L 50 6 Q 44 8 42 18 Q 42 26 44 28 Z';
+const TRIGGER_HORN_R_PATH =
+  'M 196 28 L 164 28 Q 160 26 160 20 ' +
+  'Q 160 8 166 6 L 190 6 Q 196 8 198 18 Q 198 26 196 28 Z';
+const LIGHT_BAR_PATH =
+  'M 96 34 Q 96 30 100 30 L 140 30 Q 144 30 144 34 ' +
+  'L 144 56 Q 144 60 140 60 L 100 60 Q 96 60 96 56 Z';
 
-// ── Default values (matches v2.1.0 rust/web/controller.js geometry) ──────
+// ── Default values (matches PS5-silhouette geometry in rust/web/controller.js) ──
 const defaults = {
-  // Touchpad
-  touchpad: { x: 101, y: 36, w: 38, h: 16, rx: 5 },
-  // Shoulders L1/R1
-  shoulder: { x_l: 48, x_r: 170, y: 22, w: 22, h: 6 },
-  // Triggers L2/R2
-  trigger:  { x_l: 48, x_r: 170, y: 14, w: 22, h: 6 },
-  // Meta rects (Share / Options)
-  share:    { x: 82,  y: 38, w: 7, h: 3 },
-  options:  { x: 151, y: 38, w: 7, h: 3 },
-  // PS button
-  ps:       { cx: 120, cy: 62, r: 3 },
-  // Face buttons: 4 circles in a diamond
-  face:     { cx: 184, cy: 58, spacing: 8, r: 4 },
-  // D-pad cluster center + pentagon params
-  dpad:     { cx: 59, cy: 57, R_inner: 2.70, half_w: 3.40, R_outer: 13.20 },
-  // L stick well
-  lstick:   { cx: 84,  cy: 82, r: 9 },
-  // R stick well
-  rstick:   { cx: 156, cy: 82, r: 9 },
-  // L3/R3 inner press circle radius (shared)
+  touchpad: { x: 100, y: 34, w: 40, h: 24, rx: 4 },
+  shoulder: { x_l: 48, x_r: 170, y: 21, w: 22, h: 5 },
+  trigger:  { x_l: 48, x_r: 170, y: 12, w: 22, h: 5 },
+  share:    { x: 82,  y: 36, w: 7, h: 2.5 },
+  options:  { x: 151, y: 36, w: 7, h: 2.5 },
+  ps:       { cx: 120, cy: 88, r: 2.5 },
+  face:     { cx: 176, cy: 60, spacing: 8, r: 4 },
+  dpad:     { cx: 64, cy: 60, R_inner: 2.70, half_w: 3.40, R_outer: 13.20 },
+  lstick:   { cx: 92,  cy: 88, r: 8 },
+  rstick:   { cx: 148, cy: 88, r: 8 },
   stickpress: { r: 5 },
-  // Stick wedge (donut quarter) params
   stickw:   { r_in: 11.60, r_out: 15.10, d: 1.70 },
-  // Touchpad quadrants — gap = centre-cross spacing between the 4
-  // bindable zones (matches the d-pad pentagon gap convention).
   tpquad:   { gap: 1.5 },
-  // Corner radius — inset for rounded corners on d-pad wedges + stick slices.
-  // Matches CORNER_RADIUS in rust/web/controller.js.
-  // Note: tuner preview shows sharp corners; values apply at production render time.
   cornerRadius: { dpad: 0.8, stickSlice: 0.7 },
 };
 
@@ -689,10 +694,17 @@ function render() {
   // Body
   svg.appendChild(mkPath(BODY_PATH, 'body'));
 
+  // Trigger horns
+  svg.appendChild(mkPath(TRIGGER_HORN_L_PATH, 'body'));
+  svg.appendChild(mkPath(TRIGGER_HORN_R_PATH, 'body'));
+
   // Touchpad decorative rounded rect (visible through the centre-cross
   // gap between the 4 quadrant zones).
   const tp = s.touchpad;
   svg.appendChild(mkRect(tp.x, tp.y, tp.w, tp.h, 'touchpad', tp.rx));
+
+  // Light bar seam
+  svg.appendChild(mkPath(LIGHT_BAR_PATH, 'light-bar'));
 
   // Touchpad 4 quadrants — one rounded outer corner each. ids: 25 tl, 26 tr, 27 bl, 28 br
   {
