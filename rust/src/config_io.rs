@@ -4,7 +4,7 @@
 //! round-trip of `_help`, `_keyboard_keys`, and any future "_*" doc fields.
 //! We carry both.
 
-use crate::config::{ButtonEntry, Config, MacroDef};
+use crate::config::{Binding, ButtonEntry, Config, MacroDef, TOUCHPAD_QUADRANT_IDS};
 use anyhow::{anyhow, Context, Result};
 use serde_json::Value;
 use std::collections::BTreeMap;
@@ -19,19 +19,21 @@ impl ConfigDoc {
     pub fn load(path: &Path) -> Result<Self> {
         let bytes = std::fs::read_to_string(path)
             .with_context(|| format!("reading {}", path.display()))?;
-        let raw: Value = serde_json::from_str(&bytes)
+        let mut raw: Value = serde_json::from_str(&bytes)
             .with_context(|| format!("parsing {} as JSON", path.display()))?;
-        let typed: Config = serde_json::from_value(raw.clone())
+        let mut typed: Config = serde_json::from_value(raw.clone())
             .with_context(|| format!("typed-parsing {}", path.display()))?;
+        migrate_touchpad_ids(&mut typed, &mut raw);
         typed.validate()?;
         Ok(Self { raw, typed })
     }
 
     /// Build a `ConfigDoc` from an already-typed value tree. Used by tests
     /// that seed a known config without touching the filesystem first.
-    pub fn load_from_value(raw: Value) -> Result<Self> {
-        let typed: Config =
+    pub fn load_from_value(mut raw: Value) -> Result<Self> {
+        let mut typed: Config =
             serde_json::from_value(raw.clone()).context("typed-parsing in-memory config")?;
+        migrate_touchpad_ids(&mut typed, &mut raw);
         typed.validate()?;
         Ok(Self { raw, typed })
     }
@@ -57,6 +59,56 @@ impl ConfigDoc {
     pub fn set_log_events(&mut self, v: bool) {
         self.typed.log_events = v;
         self.raw["log_events"] = Value::from(v);
+    }
+
+    pub fn set_touchpad_cursor_enabled(&mut self, v: bool) {
+        self.typed.touchpad_cursor_enabled = v;
+        self.raw["touchpad_cursor_enabled"] = Value::from(v);
+    }
+
+    pub fn set_touchpad_cursor_sensitivity(&mut self, v: f32) {
+        self.typed.touchpad_cursor_sensitivity = v;
+        self.raw["touchpad_cursor_sensitivity"] = Value::from(v);
+    }
+
+    pub fn set_touchpad_midpoint_x(&mut self, v: u16) {
+        self.typed.touchpad_midpoint_x = v;
+        self.raw["touchpad_midpoint_x"] = Value::from(v);
+    }
+
+    pub fn set_touchpad_midpoint_y(&mut self, v: u16) {
+        self.typed.touchpad_midpoint_y = v;
+        self.raw["touchpad_midpoint_y"] = Value::from(v);
+    }
+
+    pub fn set_touchpad_accel_slow_threshold(&mut self, v: u32) {
+        self.typed.touchpad_accel_slow_threshold = v;
+        self.raw["touchpad_accel_slow_threshold"] = Value::from(v);
+    }
+
+    pub fn set_touchpad_accel_fast_threshold(&mut self, v: u32) {
+        self.typed.touchpad_accel_fast_threshold = v;
+        self.raw["touchpad_accel_fast_threshold"] = Value::from(v);
+    }
+
+    pub fn set_touchpad_accel_gain_slow(&mut self, v: f32) {
+        self.typed.touchpad_accel_gain_slow = v;
+        self.raw["touchpad_accel_gain_slow"] = Value::from(v);
+    }
+
+    pub fn set_touchpad_accel_gain_fast(&mut self, v: f32) {
+        self.typed.touchpad_accel_gain_fast = v;
+        self.raw["touchpad_accel_gain_fast"] = Value::from(v);
+    }
+
+    pub fn set_touchpad_deadzone_radius(&mut self, v: u32) {
+        self.typed.touchpad_deadzone_radius = v;
+        self.raw["touchpad_deadzone_radius"] = Value::from(v);
+    }
+
+    pub fn set_touchpad_click_freeze_enabled(&mut self, v: bool) {
+        self.typed.touchpad_click_freeze_enabled = v;
+        self.raw["touchpad_click_freeze_enabled"] = Value::from(v);
     }
 
     /// Set min_press_ms without running validation.
@@ -98,6 +150,35 @@ impl ConfigDoc {
 /// Calls `doc.validate()` first — returns an error without touching the
 /// filesystem if validation fails.  Otherwise writes to a sibling `.tmp`
 /// file and renames it into place so readers never see a partial write.
+/// Migrate v2.0 → v2.1 by inserting missing touchpad quadrant ids
+/// (25..=28) as `Unbound` into both the typed and the raw JSON view.
+/// The raw patch keeps the next `write_atomic` round-trip honest.
+fn migrate_touchpad_ids(typed: &mut Config, raw: &mut Value) {
+    typed.fill_touchpad_defaults();
+    let labels = ["Touchpad TL", "Touchpad TR", "Touchpad BL", "Touchpad BR"];
+    for (id, label) in TOUCHPAD_QUADRANT_IDS.iter().zip(labels.iter()) {
+        let key = id.to_string();
+        if raw["buttons"][&key].is_null() {
+            raw["buttons"][&key] = serde_json::to_value(&ButtonEntry {
+                label: (*label).to_string(),
+                binding: Binding::Unbound,
+            }).unwrap();
+        }
+    }
+    if raw["touchpad_cursor_enabled"].is_null() {
+        raw["touchpad_cursor_enabled"] = Value::from(typed.touchpad_cursor_enabled);
+    }
+    if raw["touchpad_cursor_sensitivity"].is_null() {
+        raw["touchpad_cursor_sensitivity"] = Value::from(typed.touchpad_cursor_sensitivity);
+    }
+    if raw["touchpad_midpoint_x"].is_null() {
+        raw["touchpad_midpoint_x"] = Value::from(typed.touchpad_midpoint_x);
+    }
+    if raw["touchpad_midpoint_y"].is_null() {
+        raw["touchpad_midpoint_y"] = Value::from(typed.touchpad_midpoint_y);
+    }
+}
+
 pub fn write_atomic(target: &Path, doc: &ConfigDoc) -> Result<()> {
     doc.validate().with_context(|| "validating before write")?;
     let mut tmp: PathBuf = target.to_path_buf();

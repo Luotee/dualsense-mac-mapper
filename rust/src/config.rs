@@ -11,7 +11,38 @@ pub struct Config {
     pub log_events: bool,
     pub buttons: BTreeMap<String, ButtonEntry>,
     pub macros: BTreeMap<String, MacroDef>,
+    #[serde(default = "default_touchpad_cursor_enabled")]
+    pub touchpad_cursor_enabled: bool,
+    #[serde(default = "default_touchpad_cursor_sensitivity")]
+    pub touchpad_cursor_sensitivity: f32,
+    #[serde(default = "default_touchpad_midpoint_x")]
+    pub touchpad_midpoint_x: u16,
+    #[serde(default = "default_touchpad_midpoint_y")]
+    pub touchpad_midpoint_y: u16,
+    #[serde(default = "default_touchpad_accel_slow_threshold")]
+    pub touchpad_accel_slow_threshold: u32,
+    #[serde(default = "default_touchpad_accel_fast_threshold")]
+    pub touchpad_accel_fast_threshold: u32,
+    #[serde(default = "default_touchpad_accel_gain_slow")]
+    pub touchpad_accel_gain_slow: f32,
+    #[serde(default = "default_touchpad_accel_gain_fast")]
+    pub touchpad_accel_gain_fast: f32,
+    #[serde(default = "default_touchpad_deadzone_radius")]
+    pub touchpad_deadzone_radius: u32,
+    #[serde(default = "default_touchpad_click_freeze_enabled")]
+    pub touchpad_click_freeze_enabled: bool,
 }
+
+fn default_touchpad_cursor_enabled() -> bool { true }
+fn default_touchpad_cursor_sensitivity() -> f32 { 1.5 }
+fn default_touchpad_midpoint_x() -> u16 { 960 }
+fn default_touchpad_midpoint_y() -> u16 { 540 }
+fn default_touchpad_accel_slow_threshold() -> u32 { 5 }
+fn default_touchpad_accel_fast_threshold() -> u32 { 20 }
+fn default_touchpad_accel_gain_slow() -> f32 { 0.5 }
+fn default_touchpad_accel_gain_fast() -> f32 { 1.5 }
+fn default_touchpad_deadzone_radius() -> u32 { 2 }
+fn default_touchpad_click_freeze_enabled() -> bool { true }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct ButtonEntry {
@@ -25,7 +56,18 @@ pub struct ButtonEntry {
 pub enum Binding {
     Key(String),
     Macro(String),
+    Mouse(MouseButton),
     Unbound,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Hash)]
+#[serde(rename_all = "kebab-case")]
+pub enum MouseButton {
+    Left,
+    Middle,
+    Right,
+    WheelUp,
+    WheelDown,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -52,23 +94,49 @@ pub enum StepAction {
 use anyhow::{anyhow, bail, Context, Result};
 use std::path::Path;
 
-pub const VALID_BUTTON_IDS: std::ops::RangeInclusive<u32> = 0..=24;
+pub const VALID_BUTTON_IDS: std::ops::RangeInclusive<u32> = 0..=28;
+
+/// Button ids added in v2.1.0 for the four touchpad quadrants. Missing
+/// entries in a loaded config are auto-filled as `Unbound` before
+/// validation so v2.0 configs continue to load.
+pub const TOUCHPAD_QUADRANT_IDS: [u32; 4] = [25, 26, 27, 28];
+const TOUCHPAD_QUADRANT_LABELS: [&str; 4] = [
+    "Touchpad TL",
+    "Touchpad TR",
+    "Touchpad BL",
+    "Touchpad BR",
+];
 
 impl Config {
     pub fn load_from_path(path: &Path) -> Result<Self> {
         let text = std::fs::read_to_string(path)
             .with_context(|| format!("reading config: {}", path.display()))?;
-        let cfg: Config = serde_json::from_str(&text)
+        let mut cfg: Config = serde_json::from_str(&text)
             .with_context(|| format!("parsing config: {}", path.display()))?;
+        cfg.fill_touchpad_defaults();
         cfg.validate()?;
         Ok(cfg)
     }
 
     pub fn load_from_str(s: &str) -> Result<Self> {
-        let cfg: Config = serde_json::from_str(s)
+        let mut cfg: Config = serde_json::from_str(s)
             .context("parsing config from string")?;
+        cfg.fill_touchpad_defaults();
         cfg.validate()?;
         Ok(cfg)
+    }
+
+    /// Insert default `Unbound` entries for any of the touchpad-quadrant
+    /// ids (25..=28) missing from `buttons`. Called on load so that v2.0
+    /// configs (which never had these ids) parse and validate cleanly.
+    pub fn fill_touchpad_defaults(&mut self) {
+        for (id, label) in TOUCHPAD_QUADRANT_IDS.iter().zip(TOUCHPAD_QUADRANT_LABELS.iter()) {
+            let key = id.to_string();
+            self.buttons.entry(key).or_insert_with(|| ButtonEntry {
+                label: (*label).to_string(),
+                binding: Binding::Unbound,
+            });
+        }
     }
 
     pub fn validate(&self) -> Result<()> {
@@ -81,17 +149,60 @@ impl Config {
         if self.tick_jitter_ms[0] > self.tick_jitter_ms[1] {
             bail!("tick_jitter_ms range must have min <= max, got {:?}", self.tick_jitter_ms);
         }
+        if !(0.1..=10.0).contains(&self.touchpad_cursor_sensitivity) {
+            bail!(
+                "touchpad_cursor_sensitivity must be in [0.1, 10.0], got {}",
+                self.touchpad_cursor_sensitivity
+            );
+        }
+        if !(1..=4094).contains(&self.touchpad_midpoint_x) {
+            bail!(
+                "touchpad_midpoint_x must be in [1, 4094], got {}",
+                self.touchpad_midpoint_x
+            );
+        }
+        if !(1..=4094).contains(&self.touchpad_midpoint_y) {
+            bail!(
+                "touchpad_midpoint_y must be in [1, 4094], got {}",
+                self.touchpad_midpoint_y
+            );
+        }
+        if self.touchpad_accel_slow_threshold >= self.touchpad_accel_fast_threshold {
+            bail!(
+                "touchpad_accel_slow_threshold ({}) must be < touchpad_accel_fast_threshold ({})",
+                self.touchpad_accel_slow_threshold,
+                self.touchpad_accel_fast_threshold
+            );
+        }
+        if !(0.1..=1.0).contains(&self.touchpad_accel_gain_slow) {
+            bail!(
+                "touchpad_accel_gain_slow must be in [0.1, 1.0], got {}",
+                self.touchpad_accel_gain_slow
+            );
+        }
+        if !(1.0..=5.0).contains(&self.touchpad_accel_gain_fast) {
+            bail!(
+                "touchpad_accel_gain_fast must be in [1.0, 5.0], got {}",
+                self.touchpad_accel_gain_fast
+            );
+        }
+        if self.touchpad_deadzone_radius > 50 {
+            bail!(
+                "touchpad_deadzone_radius must be <= 50, got {}",
+                self.touchpad_deadzone_radius
+            );
+        }
         for id in VALID_BUTTON_IDS {
             let key = id.to_string();
             if !self.buttons.contains_key(&key) {
-                bail!("missing button id {id}; config must list all ids 0..=24");
+                bail!("missing button id {id}; config must list all ids 0..=28");
             }
         }
         for k in self.buttons.keys() {
             let id: u32 = k.parse()
-                .map_err(|_| anyhow!("unknown button id {k}; ids must be numeric 0..=24"))?;
+                .map_err(|_| anyhow!("unknown button id {k}; ids must be numeric 0..=28"))?;
             if !VALID_BUTTON_IDS.contains(&id) {
-                bail!("unknown button id {id}; allowed range is 0..=24");
+                bail!("unknown button id {id}; allowed range is 0..=28");
             }
         }
         for (id, entry) in &self.buttons {
@@ -386,6 +497,93 @@ mod tests {
 
     fn sample_full_config() -> Config {
         let mut buttons = BTreeMap::new();
+        for id in VALID_BUTTON_IDS {
+            buttons.insert(id.to_string(), ButtonEntry {
+                label: format!("button{id}"),
+                binding: Binding::Unbound,
+            });
+        }
+        Config {
+            version: 1,
+            deadzone: 0.4,
+            trigger_threshold: 0.5,
+            min_press_ms: [8, 25],
+            tick_jitter_ms: [0, 3],
+            log_events: false,
+            buttons,
+            macros: BTreeMap::new(),
+            touchpad_cursor_enabled: true,
+            touchpad_cursor_sensitivity: 1.5,
+            touchpad_midpoint_x: 960,
+            touchpad_midpoint_y: 540,
+            touchpad_accel_slow_threshold: 5,
+            touchpad_accel_fast_threshold: 20,
+            touchpad_accel_gain_slow: 0.5,
+            touchpad_accel_gain_fast: 1.5,
+            touchpad_deadzone_radius: 2,
+            touchpad_click_freeze_enabled: true,
+        }
+    }
+
+    #[test]
+    fn binding_mouse_left_round_trips_json() {
+        let json = r#"{ "label": "Touchpad TL", "type": "mouse", "value": "left" }"#;
+        let entry: ButtonEntry = serde_json::from_str(json).unwrap();
+        assert_eq!(entry.binding, Binding::Mouse(MouseButton::Left));
+        let back = serde_json::to_string(&entry).unwrap();
+        assert!(back.contains(r#""type":"mouse""#), "got: {back}");
+        assert!(back.contains(r#""value":"left""#), "got: {back}");
+    }
+
+    #[test]
+    fn binding_mouse_wheel_up_kebab_case() {
+        let json = r#"{ "label": "L2", "type": "mouse", "value": "wheel-up" }"#;
+        let entry: ButtonEntry = serde_json::from_str(json).unwrap();
+        assert_eq!(entry.binding, Binding::Mouse(MouseButton::WheelUp));
+    }
+
+    #[test]
+    fn config_touchpad_fields_default_when_absent() {
+        let mut v: serde_json::Value = serde_json::from_str(r#"{
+            "version": 1,
+            "deadzone": 0.4,
+            "trigger_threshold": 0.5,
+            "min_press_ms": [8, 25],
+            "tick_jitter_ms": [0, 3],
+            "log_events": false,
+            "buttons": {"0":{"label":"x","type":"unbound"}},
+            "macros": {}
+        }"#).unwrap();
+        for id in 1..=24u32 {
+            v["buttons"][id.to_string()] =
+                serde_json::json!({"label": "", "type": "unbound"});
+        }
+        let s = serde_json::to_string(&v).unwrap();
+        let cfg = Config::load_from_str(&s).expect("v2.0-style config must load");
+        assert!(cfg.touchpad_cursor_enabled);
+        assert!((cfg.touchpad_cursor_sensitivity - 1.5).abs() < 1e-6);
+        for id in TOUCHPAD_QUADRANT_IDS {
+            assert!(cfg.buttons.contains_key(&id.to_string()),
+                "touchpad id {id} must be auto-filled");
+        }
+    }
+
+    #[test]
+    fn v2_0_config_missing_touchpad_ids_auto_migrates_on_load() {
+        let cfg = sample_full_config_v20();
+        let s = serde_json::to_string(&cfg).unwrap();
+        let loaded = Config::load_from_str(&s).expect("v2.0 config must load via auto-fill");
+        for id in TOUCHPAD_QUADRANT_IDS {
+            match &loaded.buttons[&id.to_string()].binding {
+                Binding::Unbound => {}
+                other => panic!("auto-filled id {id} should be Unbound, got {other:?}"),
+            }
+        }
+    }
+
+    /// A v2.0-shaped Config with buttons only 0..=28 (no touchpad ids).
+    fn sample_full_config_v20() -> Config {
+        let mut buttons = BTreeMap::new();
         for id in 0u32..=24 {
             buttons.insert(id.to_string(), ButtonEntry {
                 label: format!("button{id}"),
@@ -401,6 +599,93 @@ mod tests {
             log_events: false,
             buttons,
             macros: BTreeMap::new(),
+            touchpad_cursor_enabled: true,
+            touchpad_cursor_sensitivity: 1.5,
+            touchpad_midpoint_x: 960,
+            touchpad_midpoint_y: 540,
+            touchpad_accel_slow_threshold: 5,
+            touchpad_accel_fast_threshold: 20,
+            touchpad_accel_gain_slow: 0.5,
+            touchpad_accel_gain_fast: 1.5,
+            touchpad_deadzone_radius: 2,
+            touchpad_click_freeze_enabled: true,
         }
+    }
+
+    #[test]
+    fn rejects_sensitivity_out_of_range() {
+        let mut cfg = sample_full_config();
+        cfg.touchpad_cursor_sensitivity = 0.0;
+        let err = cfg.validate().unwrap_err().to_string();
+        assert!(err.contains("touchpad_cursor_sensitivity"), "got: {err}");
+
+        cfg.touchpad_cursor_sensitivity = 20.0;
+        let err = cfg.validate().unwrap_err().to_string();
+        assert!(err.contains("touchpad_cursor_sensitivity"), "got: {err}");
+    }
+
+    #[test]
+    fn rejects_slow_geq_fast_accel_threshold() {
+        let mut cfg = sample_full_config();
+        cfg.touchpad_accel_slow_threshold = 30;
+        cfg.touchpad_accel_fast_threshold = 20;
+        let err = cfg.validate().unwrap_err().to_string();
+        assert!(err.contains("touchpad_accel_slow_threshold"), "got: {err}");
+    }
+
+    #[test]
+    fn rejects_accel_gain_slow_above_one() {
+        let mut cfg = sample_full_config();
+        cfg.touchpad_accel_gain_slow = 1.5;
+        let err = cfg.validate().unwrap_err().to_string();
+        assert!(err.contains("touchpad_accel_gain_slow"), "got: {err}");
+    }
+
+    #[test]
+    fn rejects_accel_gain_fast_below_one() {
+        let mut cfg = sample_full_config();
+        cfg.touchpad_accel_gain_fast = 0.8;
+        let err = cfg.validate().unwrap_err().to_string();
+        assert!(err.contains("touchpad_accel_gain_fast"), "got: {err}");
+    }
+
+    #[test]
+    fn rejects_deadzone_radius_above_50() {
+        let mut cfg = sample_full_config();
+        cfg.touchpad_deadzone_radius = 100;
+        let err = cfg.validate().unwrap_err().to_string();
+        assert!(err.contains("touchpad_deadzone_radius"), "got: {err}");
+    }
+
+    #[test]
+    fn v21_fix4_config_missing_filter_fields_auto_fills_defaults() {
+        // v2.0 / v2.1.0-fix4 style: existing touchpad fields present, new
+        // cursor filter fields absent. Must load via #[serde(default)].
+        let mut v: serde_json::Value = serde_json::from_str(r#"{
+            "version": 1,
+            "deadzone": 0.4,
+            "trigger_threshold": 0.5,
+            "min_press_ms": [8, 25],
+            "tick_jitter_ms": [0, 3],
+            "log_events": false,
+            "buttons": {},
+            "macros": {},
+            "touchpad_cursor_enabled": true,
+            "touchpad_cursor_sensitivity": 1.5,
+            "touchpad_midpoint_x": 960,
+            "touchpad_midpoint_y": 540
+        }"#).unwrap();
+        for id in 0u32..=28 {
+            v["buttons"][id.to_string()] =
+                serde_json::json!({"label": "", "type": "unbound"});
+        }
+        let s = serde_json::to_string(&v).unwrap();
+        let cfg = Config::load_from_str(&s).expect("fix4-style config must load");
+        assert_eq!(cfg.touchpad_accel_slow_threshold, 5);
+        assert_eq!(cfg.touchpad_accel_fast_threshold, 20);
+        assert!((cfg.touchpad_accel_gain_slow - 0.5).abs() < 1e-6);
+        assert!((cfg.touchpad_accel_gain_fast - 1.5).abs() < 1e-6);
+        assert_eq!(cfg.touchpad_deadzone_radius, 2);
+        assert!(cfg.touchpad_click_freeze_enabled);
     }
 }

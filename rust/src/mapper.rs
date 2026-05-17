@@ -1,4 +1,4 @@
-use crate::config::{Binding, Config};
+use crate::config::{Binding, Config, MouseButton};
 use crate::gamepad::GamepadEvent;
 
 #[derive(Debug, Clone, PartialEq)]
@@ -7,6 +7,16 @@ pub enum KeyAction {
     Release(String),
     MacroStart { name: String, source_id: u32 },
     MacroStop { source_id: u32 },
+    MousePress(MouseButton),
+    MouseRelease(MouseButton),
+    MouseMove { dx: i32, dy: i32 },
+    /// Pure diagnostic — engine forwards as a Tauri event so the GUI
+    /// can show a debug dot at the captured touchpad position.
+    TouchpadClick { raw_x: u16, raw_y: u16, quadrant: u32 },
+    /// Continuous touchpad hover preview. Emitted per HID frame on
+    /// quadrant change, forwarded to Tauri as a diagnostic event for GUI
+    /// hover rendering. `quadrant = 255` is the sentinel for "finger lifted".
+    TouchpadHover { raw_x: u16, raw_y: u16, quadrant: u32 },
 }
 
 pub struct Mapper {
@@ -58,6 +68,13 @@ impl Mapper {
                 self.last_axis[axis as usize] = value;
                 self.update_trigger_virtuals(axis)
             }
+            GamepadEvent::MouseDelta { dx, dy } => vec![KeyAction::MouseMove { dx, dy }],
+            GamepadEvent::TouchpadClick { raw_x, raw_y, quadrant } => {
+                vec![KeyAction::TouchpadClick { raw_x, raw_y, quadrant }]
+            }
+            GamepadEvent::TouchpadHover { raw_x, raw_y, quadrant } => {
+                vec![KeyAction::TouchpadHover { raw_x, raw_y, quadrant }]
+            }
         }
     }
 
@@ -75,6 +92,10 @@ impl Mapper {
                 tracing::info!(id, macro_name = %n, "macro start");
                 vec![KeyAction::MacroStart { name: n.clone(), source_id: id }]
             }
+            Some(Binding::Mouse(b)) => {
+                tracing::info!(id, ?b, "mouse press");
+                vec![KeyAction::MousePress(*b)]
+            }
             _ => {
                 tracing::debug!(id, "physical_down: id has no binding or is unbound");
                 Vec::new()
@@ -91,6 +112,10 @@ impl Mapper {
             Some(Binding::Macro(_)) => {
                 tracing::info!(id, "macro stop");
                 vec![KeyAction::MacroStop { source_id: id }]
+            }
+            Some(Binding::Mouse(b)) => {
+                tracing::info!(id, ?b, "mouse release");
+                vec![KeyAction::MouseRelease(*b)]
             }
             _ => Vec::new(),
         }
@@ -151,7 +176,7 @@ mod tests {
 
     fn cfg_with_overrides(mut overrides: Vec<(u32, Binding)>) -> Config {
         let mut buttons = BTreeMap::new();
-        for id in 0u32..=24 {
+        for id in crate::config::VALID_BUTTON_IDS {
             buttons.insert(id.to_string(), ButtonEntry {
                 label: format!("b{id}"),
                 binding: Binding::Unbound,
@@ -175,6 +200,16 @@ mod tests {
             tick_jitter_ms: [0, 3],
             log_events: false,
             buttons, macros,
+            touchpad_cursor_enabled: true,
+            touchpad_cursor_sensitivity: 1.5,
+            touchpad_midpoint_x: 960,
+            touchpad_midpoint_y: 540,
+            touchpad_accel_slow_threshold: 5,
+            touchpad_accel_fast_threshold: 20,
+            touchpad_accel_gain_slow: 0.5,
+            touchpad_accel_gain_fast: 1.5,
+            touchpad_deadzone_radius: 2,
+            touchpad_click_freeze_enabled: true,
         }
     }
 
@@ -237,6 +272,24 @@ mod tests {
             m.handle(GamepadEvent::Trigger { axis: 4, value: 0.0 }),
             vec![KeyAction::MacroStop { source_id: 23 }]
         );
+    }
+
+    #[test]
+    fn mouse_binding_press_release() {
+        let cfg = cfg_with_overrides(vec![(25, Binding::Mouse(MouseButton::Left))]);
+        let mut m = Mapper::new(cfg);
+        assert_eq!(m.handle(GamepadEvent::ButtonDown(25)),
+                   vec![KeyAction::MousePress(MouseButton::Left)]);
+        assert_eq!(m.handle(GamepadEvent::ButtonUp(25)),
+                   vec![KeyAction::MouseRelease(MouseButton::Left)]);
+    }
+
+    #[test]
+    fn mouse_delta_passes_through_as_move() {
+        let cfg = cfg_with_overrides(vec![]);
+        let mut m = Mapper::new(cfg);
+        assert_eq!(m.handle(GamepadEvent::MouseDelta { dx: 10, dy: -5 }),
+                   vec![KeyAction::MouseMove { dx: 10, dy: -5 }]);
     }
 
     #[test]

@@ -17,6 +17,11 @@ fn set_settings_persists_and_rejects_invalid_ranges() {
         min_press_ms: [25, 8],
         tick_jitter_ms: [0, 3],
         log_events: true,
+        touchpad_cursor_enabled: true,
+        touchpad_cursor_sensitivity: 1.5,
+        touchpad_midpoint_x: 960,
+        touchpad_midpoint_y: 540,
+        ..Settings::defaults()
     }).unwrap_err();
     assert!(format!("{err:#}").to_lowercase().contains("min_press_ms"),
             "error should name the bad field; got: {err:#}");
@@ -28,11 +33,69 @@ fn set_settings_persists_and_rejects_invalid_ranges() {
         min_press_ms: [8, 25],
         tick_jitter_ms: [0, 3],
         log_events: true,
+        touchpad_cursor_enabled: true,
+        touchpad_cursor_sensitivity: 1.5,
+        touchpad_midpoint_x: 960,
+        touchpad_midpoint_y: 540,
+        ..Settings::defaults()
     }).unwrap();
 
     let live = handle.config_read();
     assert!((live.deadzone - 0.6).abs() < 1e-4, "deadzone hot-rebound; got {}", live.deadzone);
     drop(live);
+    engine.shutdown();
+}
+
+#[test]
+fn set_settings_pushes_touchpad_cursor_to_hid_atomics() {
+    let cfg = test_helpers::load_example();
+    let cfg_path = test_helpers::tmp_config_with(&cfg);
+    let engine = Engine::spawn_with_fake_gamepad(cfg.clone()).unwrap();
+    let handle = engine.handle();
+
+    set_settings_impl(&handle, cfg_path.path(), Settings {
+        deadzone: 0.4,
+        trigger_threshold: 0.5,
+        min_press_ms: [8, 25],
+        tick_jitter_ms: [0, 3],
+        log_events: true,
+        touchpad_cursor_enabled: false,
+        touchpad_cursor_sensitivity: 3.25,
+        touchpad_midpoint_x: 850,
+        touchpad_midpoint_y: 480,
+        ..Settings::defaults()
+    }).unwrap();
+
+    let params = handle.cursor_params();
+    assert!(!params.enabled());
+    assert!((params.sensitivity() - 3.25).abs() < 1e-4,
+        "live sensitivity hot-rebound; got {}", params.sensitivity());
+    assert_eq!(params.midpoint_x(), 850);
+    assert_eq!(params.midpoint_y(), 480);
+    engine.shutdown();
+}
+
+#[test]
+fn set_settings_rejects_sensitivity_out_of_range() {
+    let cfg = test_helpers::load_example();
+    let cfg_path = test_helpers::tmp_config_with(&cfg);
+    let engine = Engine::spawn_with_fake_gamepad(cfg.clone()).unwrap();
+    let handle = engine.handle();
+
+    let err = set_settings_impl(&handle, cfg_path.path(), Settings {
+        deadzone: 0.4,
+        trigger_threshold: 0.5,
+        min_press_ms: [8, 25],
+        tick_jitter_ms: [0, 3],
+        log_events: true,
+        touchpad_cursor_enabled: true,
+        touchpad_cursor_sensitivity: 99.0,
+        touchpad_midpoint_x: 960,
+        touchpad_midpoint_y: 540,
+        ..Settings::defaults()
+    }).unwrap_err();
+    assert!(format!("{err:#}").contains("touchpad_cursor_sensitivity"),
+        "expected the bad field name in the error; got: {err:#}");
     engine.shutdown();
 }
 

@@ -210,6 +210,7 @@ code {
 }
 .controller .wedge.binding-key   { stroke: var(--accent); }
 .controller .wedge.binding-macro { stroke: var(--macro); }
+.controller .wedge.binding-mouse { stroke: var(--mouse, #38bdf8); }
 /* Unbound wedges are transparent inside but keep a thin dashed outline
    so the user can still see where each hit zone lives — without it,
    four unbound stick directions read as "no buttons here". */
@@ -224,7 +225,25 @@ code {
 /* Binding kind colours */
 .controller .binding-key     { fill: var(--accent); }
 .controller .binding-macro   { fill: var(--macro); }
+.controller .binding-mouse   { fill: var(--mouse, #38bdf8); }
 .controller .binding-unbound { fill: var(--card); stroke: var(--muted); }
+
+/* Touchpad debug dot — shows the last captured touchpad click position
+   so the user can verify the raw (x, y) lines up with where they
+   actually touched. If the dot is offset, tune
+   touchpad_midpoint_x / _y in Settings → Touchpad. */
+.controller .touchpad-debug-dot {
+  fill: var(--yellow);
+  stroke: var(--bg);
+  stroke-width: 0.3;
+  pointer-events: none;
+  animation: touchpad-dot-fade 1200ms ease-out forwards;
+}
+@keyframes touchpad-dot-fade {
+  from { opacity: 0.9; }
+  to   { opacity: 0;   }
+}
+
 
 /* Live-press overlay: animated yellow ring */
 .controller .press-ring {
@@ -291,7 +310,31 @@ code {
 .chip        { font-family: var(--mono); font-size: 11px; padding: 2px 7px; border-radius: 3px; }
 .chip-key    { background: var(--soft);       color: var(--accent); }
 .chip-macro  { background: var(--macro-soft); color: var(--macro); }
+.chip-mouse  { background: rgba(56, 189, 248, 0.12); color: var(--mouse, #38bdf8); }
 .chip-mute   { color: var(--muted); font-size: 10px; }
+
+/* Bind-popup Mouse picker — 5-button grid (Left/Middle/Right/Wheel up/down). */
+.mouse-picker {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 6px;
+  padding: 4px 0;
+}
+.mouse-opt {
+  font-size: 12px;
+  padding: 6px 10px;
+  border-radius: 4px;
+  border: 1px solid var(--border);
+  background: var(--card);
+  color: var(--text);
+  cursor: pointer;
+}
+.mouse-opt:hover { background: var(--soft); }
+.mouse-opt.on {
+  background: rgba(56, 189, 248, 0.15);
+  border-color: var(--mouse, #38bdf8);
+  color: var(--mouse, #38bdf8);
+}
 
 /* ── Bind popup ───────────────────────────────────────────────────────────── */
 /* Dock the popup to the right edge so the controller diagram on the left
@@ -451,3 +494,70 @@ body { position: relative; }
 .activity-row.a-release .a-msg { color: var(--muted); }
 .activity-row.a-emit    .a-msg { color: var(--accent); }
 .activity-row.a-macro   .a-msg { color: var(--macro); }
+
+/* ===== v2.1.0 Issue 3 — touchpad hover preview ===== */
+.hit.hover {
+  /* The hit-zone path gets `hover` class while finger is over this
+     quadrant. Brighten the fill so user sees live which zone is
+     active before click. */
+  fill: rgba(255, 230, 60, 0.18);
+  stroke: rgba(255, 230, 60, 0.55);
+  stroke-width: 0.5;
+}
+.touchpad-hover-dot {
+  fill: #ffd23f;
+  fill-opacity: 0.9;
+  stroke: #ffffff;
+  stroke-width: 0.2;
+  pointer-events: none;
+}
+
+/* ===== v2.1.0 Issue 5 — key binding table 2-column layout ===== */
+#chip-list.chip-list {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 4px 12px;
+  align-items: center;
+}
+#chip-list .chip-row {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+}
+#chip-list .chip-label {
+  flex: 0 0 70px;
+  font-size: 12px;
+  white-space: nowrap;
+}
+#chip-list .chip,
+#chip-list .chip-mute {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ===== v2.1.0 Issue 6 — Disconnect button ===== */
+.btn-disconnect {
+  padding: 4px 10px;
+  font-size: 12px;
+  background: #2a2a2a;
+  color: #ccc;
+  border: 1px solid #444;
+  border-radius: 3px;
+  cursor: pointer;
+  margin-right: 4px;
+}
+.btn-disconnect:hover { background: #3a3a3a; }
+.btn-disconnect:active { background: #1a1a1a; }
+
+/* PS5 silhouette decorations */
+.light-bar {
+  fill: none;
+  stroke: rgba(80, 140, 255, 0.4);
+  stroke-width: 0.5;
+}
+.mic-slot {
+  fill: rgba(0, 0, 0, 0.4);
+}

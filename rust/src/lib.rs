@@ -4,6 +4,7 @@ pub mod engine;
 pub mod gamepad;
 pub mod gui;
 pub mod keyboard;
+pub mod mouse;
 pub mod macro_engine;
 pub mod mapper;
 pub mod safety;

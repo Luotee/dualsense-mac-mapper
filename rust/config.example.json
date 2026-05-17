@@ -3,7 +3,11 @@
     "Edit the 'buttons' section to remap. Change 'type' to one of:",
     "  - 'key'      : set 'value' to a key name from _keyboard_keys below",
     "  - 'macro'    : set 'value' to a macro name defined in 'macros'",
+    "  - 'mouse'    : set 'value' to one of: 'left', 'middle', 'right', 'wheel-up', 'wheel-down'",
     "  - 'unbound'  : do nothing (omit 'value')",
+    "Ids 25..=28 are the four touchpad quadrants (TL/TR/BL/BR).",
+    "Set 'touchpad_cursor_enabled' to false to disable the cursor; sensitivity is in [0.1, 10.0].",
+    "'touchpad_midpoint_x' / 'touchpad_midpoint_y' set the quadrant boundary in raw pad coords (default 960/540 = centre of a 1920x1080 pad). If the wrong quadrant fires on click, watch the debug dot in the GUI to see the captured raw position, then tune these values.",
     "Restart the exe after editing — there is no hot reload in v0.1.x.",
     "Fields starting with '_' are documentation only and ignored by the program."
   ],
@@ -53,8 +57,22 @@
     "21": { "label": "R-stick ←",                "type": "unbound" },
     "22": { "label": "R-stick →",                "type": "unbound" },
     "23": { "label": "L2（類比板機）",           "type": "unbound" },
-    "24": { "label": "R2（類比板機）",           "type": "key",     "value": "Shift" }
+    "24": { "label": "R2（類比板機）",           "type": "key",     "value": "Shift" },
+    "25": { "label": "Touchpad TL",              "type": "mouse",   "value": "left" },
+    "26": { "label": "Touchpad TR",              "type": "mouse",   "value": "left" },
+    "27": { "label": "Touchpad BL",              "type": "mouse",   "value": "left" },
+    "28": { "label": "Touchpad BR",              "type": "mouse",   "value": "left" }
   },
+  "touchpad_cursor_enabled": true,
+  "touchpad_cursor_sensitivity": 1.5,
+  "touchpad_midpoint_x": 960,
+  "touchpad_midpoint_y": 540,
+  "touchpad_click_freeze_enabled": true,
+  "touchpad_accel_slow_threshold": 5,
+  "touchpad_accel_fast_threshold": 20,
+  "touchpad_accel_gain_slow": 0.5,
+  "touchpad_accel_gain_fast": 1.5,
+  "touchpad_deadzone_radius": 2,
   "macros": {
     "macro_A": {
       "loop": true,

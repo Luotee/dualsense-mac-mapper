@@ -35,6 +35,7 @@
   .body       { fill: var(--card); stroke: var(--border); stroke-width: 1.4; }
   .touchpad   { fill: var(--bg);   stroke: var(--border); stroke-width: 1; }
   .stick-ring { fill: var(--bg);   stroke: var(--border); stroke-width: 1.4; }
+  .light-bar  { fill: none; stroke: rgba(80, 140, 255, 0.4); stroke-width: 0.5; }
   .meta-rect  { fill: var(--bg);   stroke: var(--muted); stroke-opacity: 0.6; }
   .hit        { stroke: var(--border); stroke-width: 1; }
   .binding-key   { fill: var(--accent); fill-opacity: 0.85; stroke: var(--accent); }
@@ -139,6 +140,10 @@
     overflow-y: auto;
     white-space: pre;
   }
+  .tuner-selected {
+    outline: 2px dashed #ffcc00;
+    outline-offset: 2px;
+  }
 </style>
 </head>
 <body>
@@ -168,44 +173,146 @@
     <!-- group templates rendered by JS -->
     <div id="group-container"></div>
 
+    <div id="selected-panel" style="padding: 8px 12px; border-top: 1px solid #444;">
+      <em>Click any button in the preview to fine-tune.</em>
+    </div>
+
   </div>
 </div>
 
 <script>
 const NS = 'http://www.w3.org/2000/svg';
 const BODY_PATH =
-  'M 50 30 Q 38 30 36 50 Q 32 80 62 92 Q 75 102 95 102 ' +
-  'L 145 102 Q 165 102 178 92 Q 208 80 204 50 Q 202 30 190 30 L 50 30 Z';
+  'M 60 28 ' +
+  'Q 44 28 40 38 ' +
+  'Q 30 50 30 64 ' +
+  'Q 30 84 50 96 ' +
+  'Q 58 108 72 112 ' +
+  'Q 86 114 94 108 ' +
+  'L 146 108 ' +
+  'Q 154 114 168 112 ' +
+  'Q 182 108 190 96 ' +
+  'Q 210 84 210 64 ' +
+  'Q 210 50 200 38 ' +
+  'Q 196 28 180 28 ' +
+  'L 60 28 Z';
+const TRIGGER_HORN_L_PATH =
+  'M 44 28 L 76 28 Q 80 26 80 20 ' +
+  'Q 80 8 74 6 L 50 6 Q 44 8 42 18 Q 42 26 44 28 Z';
+const TRIGGER_HORN_R_PATH =
+  'M 196 28 L 164 28 Q 160 26 160 20 ' +
+  'Q 160 8 166 6 L 190 6 Q 196 8 198 18 Q 198 26 196 28 Z';
+const LIGHT_BAR_PATH =
+  'M 96 34 Q 96 30 100 30 L 140 30 Q 144 30 144 34 ' +
+  'L 144 56 Q 144 60 140 60 L 100 60 Q 96 60 96 56 Z';
 
-// ── Default values (matches v1.1.2 controller.js) ─────────────────────────
+// ── Default values (matches PS5-silhouette geometry in rust/web/controller.js) ──
 const defaults = {
-  // Touchpad
-  touchpad: { x: 101, y: 36, w: 38, h: 16, rx: 5 },
-  // Shoulders L1/R1
-  shoulder: { x_l: 48, x_r: 170, y: 22, w: 22, h: 6 },
-  // Triggers L2/R2
-  trigger:  { x_l: 48, x_r: 170, y: 14, w: 22, h: 6 },
-  // Meta rects (Share / Options)
-  share:    { x: 82,  y: 38, w: 7, h: 3 },
-  options:  { x: 151, y: 38, w: 7, h: 3 },
-  // PS button
-  ps:       { cx: 120, cy: 62, r: 3 },
-  // Face buttons: 4 circles in a diamond
-  face:     { cx: 184, cy: 58, spacing: 8, r: 4 },
-  // D-pad cluster center + pentagon params
-  dpad:     { cx: 59, cy: 57, R_inner: 4, half_w: 3.5, R_outer: 16 },
-  // L stick well
-  lstick:   { cx: 84,  cy: 82, r: 9 },
-  // R stick well
-  rstick:   { cx: 156, cy: 82, r: 9 },
-  // L3/R3 inner press circle radius (shared)
+  touchpad: { x: 100, y: 34, w: 40, h: 24, rx: 4 },
+  shoulder: { x_l: 48, x_r: 170, y: 21, w: 22, h: 5 },
+  trigger:  { x_l: 48, x_r: 170, y: 12, w: 22, h: 5 },
+  share:    { x: 82,  y: 36, w: 7, h: 2.5 },
+  options:  { x: 151, y: 36, w: 7, h: 2.5 },
+  ps:       { cx: 120, cy: 88, r: 2.5 },
+  face:     { cx: 176, cy: 60, spacing: 8, r: 4 },
+  dpad:     { cx: 64, cy: 60, R_inner: 2.70, half_w: 3.40, R_outer: 13.20 },
+  lstick:   { cx: 92,  cy: 88, r: 8 },
+  rstick:   { cx: 148, cy: 88, r: 8 },
   stickpress: { r: 5 },
-  // Stick wedge (donut quarter) params
-  stickw:   { r_in: 10, r_out: 17, d: 3 },
+  stickw:   { r_in: 11.60, r_out: 15.10, d: 1.70 },
+  tpquad:   { gap: 1.5 },
+  cornerRadius: { dpad: 0.8, stickSlice: 0.7 },
 };
 
 let state = JSON.parse(JSON.stringify(defaults));
 let bindingKind = 'key';
+
+// ── Per-button dx/dy fine-tune state ──────────────────────────────────────
+let selectedId = null;
+const buttonOverrides = new Map();  // mirror of production BUTTON_OVERRIDES
+
+function selectButton(id) {
+  selectedId = id;
+  renderSelectedPanel();
+  // Visual ring on selected shape
+  document.querySelectorAll('#svg [data-id]').forEach(el => {
+    el.classList.toggle('tuner-selected', String(el.dataset.id) === String(id));
+  });
+}
+
+function clearSelection() {
+  selectedId = null;
+  document.querySelectorAll('#svg [data-id]').forEach(el => el.classList.remove('tuner-selected'));
+  renderSelectedPanel();
+}
+
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape') clearSelection();
+});
+
+function renderSelectedPanel() {
+  const panel = document.getElementById('selected-panel');
+  if (!panel) return;
+  if (selectedId === null) {
+    panel.innerHTML = '<em>Click any button in the preview to fine-tune.</em>';
+    return;
+  }
+  const o = buttonOverrides.get(selectedId) || {};
+  panel.innerHTML = `
+    <h3 style="margin: 0 0 8px; font-size: 13px;">Button id ${selectedId} <span style="color: #888; font-weight: normal; font-size: 11px;">(Esc to deselect)</span></h3>
+    <div class="row">
+      <label>dx</label>
+      <input type="range"  data-key="dx" min="-20" max="20" step="0.5" value="${o.dx ?? 0}">
+      <input type="number" data-key="dx" min="-20" max="20" step="0.5" value="${o.dx ?? 0}">
+    </div>
+    <div class="row">
+      <label>dy</label>
+      <input type="range"  data-key="dy" min="-20" max="20" step="0.5" value="${o.dy ?? 0}">
+      <input type="number" data-key="dy" min="-20" max="20" step="0.5" value="${o.dy ?? 0}">
+    </div>
+    <button id="btn-reset-this" style="margin-top: 8px; font-size: 11px;">Reset this button</button>
+  `;
+  // Wire range ↔ number sync + override write
+  panel.querySelectorAll('.row').forEach(row => {
+    const r = row.querySelector('input[type=range]');
+    const n = row.querySelector('input[type=number]');
+    const key = r.dataset.key;
+    const upd = src => {
+      const v = parseFloat(src.value);
+      (src === r ? n : r).value = src.value;
+      const cur = buttonOverrides.get(selectedId) || {};
+      cur[key] = v;
+      // Drop key if back to zero (keeps Map clean)
+      if (v === 0) delete cur[key];
+      if (Object.keys(cur).length === 0) {
+        buttonOverrides.delete(selectedId);
+      } else {
+        buttonOverrides.set(selectedId, cur);
+      }
+      render();
+      // Re-select after render (svg recreated)
+      requestAnimationFrame(() => selectButton(selectedId));
+    };
+    r.addEventListener('input', () => upd(r));
+    n.addEventListener('input', () => upd(n));
+  });
+  panel.querySelector('#btn-reset-this').addEventListener('click', () => {
+    buttonOverrides.delete(selectedId);
+    renderSelectedPanel();
+    render();
+    requestAnimationFrame(() => selectButton(selectedId));
+  });
+}
+
+// Tuner-side applyOverride (mirrors production controller.js):
+function applyOverride(shape, id) {
+  const o = buttonOverrides.get(id);
+  if (!o) return;
+  const dx = o.dx ?? 0;
+  const dy = o.dy ?? 0;
+  if (dx === 0 && dy === 0) return;
+  shape.setAttribute('transform', `translate(${dx} ${dy})`);
+}
 
 // ── Group definitions for the side panel ──────────────────────────────────
 // Each group has: title, keyPath, fields[{key, label, min, max, step}]
@@ -324,13 +431,34 @@ const groups = [
              `gap (between quarters) = d × √2 = <b>${gap.toFixed(2)}</b>`;
     },
   },
+  {
+    title: 'Touchpad quadrants', path: 'tpquad', fields: [
+      ['gap', 'centre gap', 0, 6, 0.1],
+    ],
+    derived: s => {
+      const halfW = (s.touchpad.w - s.tpquad.gap) / 2;
+      const halfH = (s.touchpad.h - s.tpquad.gap) / 2;
+      return `each quadrant = ${halfW.toFixed(2)} × ${halfH.toFixed(2)} (w × h)<br>` +
+             `outer-corner radius inherited from touchpad rx = <b>${s.touchpad.rx}</b>`;
+    },
+  },
+  {
+    title: 'Corner radius (rounded outer corners)', path: 'cornerRadius', fields: [
+      ['dpad',       'd-pad wedge',  0, 3, 0.05],
+      ['stickSlice', 'stick slice',  0, 3, 0.05],
+    ],
+    derived: s => {
+      return `d-pad inset = <b>${s.cornerRadius.dpad}</b> px from outer corners<br>` +
+             `stick slice inset = <b>${s.cornerRadius.stickSlice}</b> px from all 4 corners`;
+    },
+  },
 ];
 
 // ── Build side panel ──────────────────────────────────────────────────────
 const gc = document.getElementById('group-container');
 for (const g of groups) {
   const det = document.createElement('details');
-  det.open = ['Touchpad','Shoulders (L1 / R1)','Triggers (L2 / R2)','D-pad pentagons','Stick donut quarter'].includes(g.title);
+  det.open = ['Touchpad','Touchpad quadrants','Shoulders (L1 / R1)','Triggers (L2 / R2)','D-pad pentagons','Stick donut quarter'].includes(g.title);
   det.innerHTML = `
     <summary>${g.title}</summary>
     <div class="body-rows" data-path="${g.path}">
@@ -387,7 +515,11 @@ document.getElementById('btn-reset').addEventListener('click', () => {
       r.value = v; n.value = v;
     });
   });
+  // Also clear per-button overrides on full reset
+  buttonOverrides.clear();
+  selectedId = null;
   render();
+  renderSelectedPanel();
 });
 
 document.getElementById('btn-export').addEventListener('click', () => {
@@ -406,6 +538,8 @@ function generateExport() {
   lines.push('');
   lines.push('// ── Sprite geometry constants ─────────────────────────────');
   lines.push(`const TOUCHPAD = { x: ${fcs(s.touchpad.x)}, y: ${fcs(s.touchpad.y)}, w: ${fcs(s.touchpad.w)}, h: ${fcs(s.touchpad.h)}, rx: ${fcs(s.touchpad.rx)} };`);
+  lines.push(`const TOUCHPAD_QUAD_GAP = ${fcs(s.tpquad.gap)};`);
+  lines.push(`const CORNER_RADIUS = { dpad: ${fcs(s.cornerRadius.dpad)}, stickSlice: ${fcs(s.cornerRadius.stickSlice)} };`);
   lines.push(`const L_STICK  = { cx: ${fcs(s.lstick.cx)}, cy: ${fcs(s.lstick.cy)}, r: ${fcs(s.lstick.r)} };`);
   lines.push(`const R_STICK  = { cx: ${fcs(s.rstick.cx)}, cy: ${fcs(s.rstick.cy)}, r: ${fcs(s.rstick.r)} };`);
   lines.push('');
@@ -442,6 +576,24 @@ function generateExport() {
   lines.push(`const r_in  = ${fcs(s.stickw.r_in)};`);
   lines.push(`const r_out = ${fcs(s.stickw.r_out)};`);
   lines.push(`const d     = ${fcs(s.stickw.d)};`);
+  // BUTTON_OVERRIDES — only emit entries that exist
+  if (buttonOverrides.size > 0) {
+    lines.push('');
+    lines.push('// Issue 4: per-button position fine-tunes.');
+    const entries = [...buttonOverrides.entries()].map(([id, o]) => {
+      const parts = [];
+      if (o.dx !== undefined && o.dx !== 0) parts.push(`dx: ${o.dx}`);
+      if (o.dy !== undefined && o.dy !== 0) parts.push(`dy: ${o.dy}`);
+      return `  [${id}, { ${parts.join(', ')} }]`;
+    });
+    lines.push(`export const BUTTON_OVERRIDES = new Map([`);
+    lines.push(entries.join(',\n'));
+    lines.push(`]);`);
+  } else {
+    lines.push('');
+    lines.push('// BUTTON_OVERRIDES: no per-button tunes set; default empty Map.');
+    lines.push('export const BUTTON_OVERRIDES = new Map();');
+  }
   return lines.join('\n');
 }
 
@@ -464,6 +616,21 @@ function mkPath(d, cls) {
   const p = document.createElementNS(NS, 'path');
   p.setAttribute('d', d); p.setAttribute('class', cls);
   return p;
+}
+
+function mkTouchpadQuad(x, y, w, h, r, corner) {
+  const x1 = x + w, y1 = y + h;
+  switch (corner) {
+    case 'tl':
+      return `M ${x} ${y + r} A ${r} ${r} 0 0 1 ${x + r} ${y} L ${x1} ${y} L ${x1} ${y1} L ${x} ${y1} Z`;
+    case 'tr':
+      return `M ${x} ${y} L ${x1 - r} ${y} A ${r} ${r} 0 0 1 ${x1} ${y + r} L ${x1} ${y1} L ${x} ${y1} Z`;
+    case 'bl':
+      return `M ${x} ${y} L ${x1} ${y} L ${x1} ${y1} L ${x + r} ${y1} A ${r} ${r} 0 0 1 ${x} ${y1 - r} Z`;
+    case 'br':
+    default:
+      return `M ${x} ${y} L ${x1} ${y} L ${x1} ${y1 - r} A ${r} ${r} 0 0 1 ${x1 - r} ${y1} L ${x} ${y1} Z`;
+  }
 }
 
 function bindClass(kind) {
@@ -512,6 +679,13 @@ function mkQuarter(cx, cy, dir, p) {
   ].join(' ');
 }
 
+// Helper: assign data-id, apply override, then append to svg.
+function appendHit(svg, shape, id) {
+  shape.dataset.id = String(id);
+  applyOverride(shape, id);
+  svg.appendChild(shape);
+}
+
 function render() {
   const svg = document.getElementById('svg');
   svg.innerHTML = '';
@@ -520,52 +694,86 @@ function render() {
   // Body
   svg.appendChild(mkPath(BODY_PATH, 'body'));
 
-  // Touchpad
+  // Trigger horns
+  svg.appendChild(mkPath(TRIGGER_HORN_L_PATH, 'body'));
+  svg.appendChild(mkPath(TRIGGER_HORN_R_PATH, 'body'));
+
+  // Touchpad decorative rounded rect (visible through the centre-cross
+  // gap between the 4 quadrant zones).
   const tp = s.touchpad;
   svg.appendChild(mkRect(tp.x, tp.y, tp.w, tp.h, 'touchpad', tp.rx));
 
-  // Shoulders + triggers
-  const sh = s.shoulder, tr = s.trigger;
-  svg.appendChild(mkRect(sh.x_l, sh.y, sh.w, sh.h, 'meta-rect', 2));
-  svg.appendChild(mkRect(sh.x_r, sh.y, sh.w, sh.h, 'meta-rect', 2));
-  svg.appendChild(mkRect(tr.x_l, tr.y, tr.w, tr.h, 'meta-rect', 2));
-  svg.appendChild(mkRect(tr.x_r, tr.y, tr.w, tr.h, 'meta-rect', 2));
+  // Light bar seam
+  svg.appendChild(mkPath(LIGHT_BAR_PATH, 'light-bar'));
 
-  // Share / Options
-  svg.appendChild(mkRect(s.share.x,   s.share.y,   s.share.w,   s.share.h,   'meta-rect', 1));
-  svg.appendChild(mkRect(s.options.x, s.options.y, s.options.w, s.options.h, 'meta-rect', 1));
-
-  // PS
-  svg.appendChild(mkCircle(s.ps.cx, s.ps.cy, s.ps.r, 'meta-rect'));
-
-  // Face buttons
-  const fcls = `hit ${bindClass(bindingKind)}`;
-  const f = s.face;
-  svg.appendChild(mkCircle(f.cx,            f.cy - f.spacing, f.r, fcls));
-  svg.appendChild(mkCircle(f.cx + f.spacing,f.cy,             f.r, fcls));
-  svg.appendChild(mkCircle(f.cx,            f.cy + f.spacing, f.r, fcls));
-  svg.appendChild(mkCircle(f.cx - f.spacing,f.cy,             f.r, fcls));
-
-  // Stick wells
-  svg.appendChild(mkCircle(s.lstick.cx, s.lstick.cy, s.lstick.r, 'stick-ring'));
-  svg.appendChild(mkCircle(s.rstick.cx, s.rstick.cy, s.rstick.r, 'stick-ring'));
-
-  // D-pad pentagons
-  const dcls = `hit wedge ${bindClass(bindingKind)}`;
-  for (const dir of ['up','down','left','right']) {
-    svg.appendChild(mkPath(mkArrow(s.dpad.cx, s.dpad.cy, dir, s.dpad), dcls));
-  }
-
-  // Stick donut quarters
-  for (const [scx, scy] of [[s.lstick.cx, s.lstick.cy], [s.rstick.cx, s.rstick.cy]]) {
-    for (const dir of ['up','down','left','right']) {
-      svg.appendChild(mkPath(mkQuarter(scx, scy, dir, s.stickw), dcls));
+  // Touchpad 4 quadrants — one rounded outer corner each. ids: 25 tl, 26 tr, 27 bl, 28 br
+  {
+    const tq = s.tpquad;
+    const cx = tp.x + tp.w / 2;
+    const cy = tp.y + tp.h / 2;
+    const w  = tp.w / 2 - tq.gap / 2;
+    const h  = tp.h / 2 - tq.gap / 2;
+    const r  = tp.rx;
+    const leftX  = tp.x;
+    const rightX = cx + tq.gap / 2;
+    const topY   = tp.y;
+    const botY   = cy + tq.gap / 2;
+    const qcls = `hit ${bindClass(bindingKind)}`;
+    const quads = [
+      { x: leftX,  y: topY, corner: 'tl', id: 25 },
+      { x: rightX, y: topY, corner: 'tr', id: 26 },
+      { x: leftX,  y: botY, corner: 'bl', id: 27 },
+      { x: rightX, y: botY, corner: 'br', id: 28 },
+    ];
+    for (const q of quads) {
+      appendHit(svg, mkPath(mkTouchpadQuad(q.x, q.y, w, h, r, q.corner), qcls), q.id);
     }
   }
 
-  // L3 / R3 inner press
-  svg.appendChild(mkCircle(s.lstick.cx, s.lstick.cy, s.stickpress.r, fcls));
-  svg.appendChild(mkCircle(s.rstick.cx, s.rstick.cy, s.stickpress.r, fcls));
+  // Shoulders + triggers (ids: 9 L1, 10 R1, 23 L2, 24 R2)
+  const sh = s.shoulder, tr = s.trigger;
+  appendHit(svg, mkRect(sh.x_l, sh.y, sh.w, sh.h, 'hit meta-rect', 2), 9);
+  appendHit(svg, mkRect(sh.x_r, sh.y, sh.w, sh.h, 'hit meta-rect', 2), 10);
+  appendHit(svg, mkRect(tr.x_l, tr.y, tr.w, tr.h, 'hit meta-rect', 2), 23);
+  appendHit(svg, mkRect(tr.x_r, tr.y, tr.w, tr.h, 'hit meta-rect', 2), 24);
+
+  // Share / Options (ids: 4 Share, 6 Options)
+  appendHit(svg, mkRect(s.share.x,   s.share.y,   s.share.w,   s.share.h,   'hit meta-rect', 1), 4);
+  appendHit(svg, mkRect(s.options.x, s.options.y, s.options.w, s.options.h, 'hit meta-rect', 1), 6);
+
+  // PS (id: 5)
+  appendHit(svg, mkCircle(s.ps.cx, s.ps.cy, s.ps.r, 'hit meta-rect'), 5);
+
+  // Face buttons (ids: 3 Triangle top, 1 Circle right, 0 Cross bottom, 2 Square left)
+  const fcls = `hit ${bindClass(bindingKind)}`;
+  const f = s.face;
+  appendHit(svg, mkCircle(f.cx,            f.cy - f.spacing, f.r, fcls), 3);
+  appendHit(svg, mkCircle(f.cx + f.spacing,f.cy,             f.r, fcls), 1);
+  appendHit(svg, mkCircle(f.cx,            f.cy + f.spacing, f.r, fcls), 0);
+  appendHit(svg, mkCircle(f.cx - f.spacing,f.cy,             f.r, fcls), 2);
+
+  // Stick wells (sprites only, no id)
+  svg.appendChild(mkCircle(s.lstick.cx, s.lstick.cy, s.lstick.r, 'stick-ring'));
+  svg.appendChild(mkCircle(s.rstick.cx, s.rstick.cy, s.rstick.r, 'stick-ring'));
+
+  // D-pad pentagons (ids: 11 up, 12 down, 13 left, 14 right)
+  const dcls = `hit wedge ${bindClass(bindingKind)}`;
+  const dpadDirs = [['up',11],['down',12],['left',13],['right',14]];
+  for (const [dir, id] of dpadDirs) {
+    appendHit(svg, mkPath(mkArrow(s.dpad.cx, s.dpad.cy, dir, s.dpad), dcls), id);
+  }
+
+  // Stick donut quarters (L: 15 up, 16 down, 17 left, 18 right; R: 19-22)
+  const stickDirs = [['up',0],['down',1],['left',2],['right',3]];
+  for (const [scx, scy, base] of [[s.lstick.cx, s.lstick.cy, 15], [s.rstick.cx, s.rstick.cy, 19]]) {
+    for (const [dir, off] of stickDirs) {
+      appendHit(svg, mkPath(mkQuarter(scx, scy, dir, s.stickw), dcls), base + off);
+    }
+  }
+
+  // L3 / R3 inner press (ids: 7 L3, 8 R3)
+  appendHit(svg, mkCircle(s.lstick.cx, s.lstick.cy, s.stickpress.r, fcls), 7);
+  appendHit(svg, mkCircle(s.rstick.cx, s.rstick.cy, s.stickpress.r, fcls), 8);
 
   // Derived labels
   document.querySelectorAll('[data-derived]').forEach(el => {
@@ -575,6 +783,12 @@ function render() {
 }
 
 render();
+
+// Hook click-to-select on the SVG container (event delegation; outlives render redraws).
+document.getElementById('svg').addEventListener('click', e => {
+  const hit = e.target.closest('[data-id]');
+  if (hit) selectButton(Number(hit.dataset.id));
+});
 </script>
 </body>
 </html>

@@ -9,10 +9,11 @@
 //!   * `EngineEvent` — what the loop emits for the activity log.
 
 use crate::config::Config;
-use crate::gamepad::GamepadSource;
+use crate::gamepad::{CursorParams, GamepadSource};
 use crate::keyboard::KeyboardSink;
 use crate::macro_engine::MacroEngine;
 use crate::mapper::{KeyAction, Mapper};
+use crate::mouse::MouseSink;
 use crate::safety::{self, SharedKeyState};
 use anyhow::Result;
 use crossbeam_channel::{unbounded, Receiver, Sender};
@@ -32,6 +33,12 @@ pub enum EngineEvent {
     KeyEmit    { ts_ms: u64, key: String, action: &'static str /* "down"|"up" */ },
     MacroStart { ts_ms: u64, name: String },
     MacroEnd   { ts_ms: u64, name: String, completed: bool },
+    /// Diagnostic — emitted once per touchpad click rising edge with
+    /// the raw finger position captured at that instant.
+    TouchpadClick { raw_x: u16, raw_y: u16, quadrant: u32 },
+    /// Diagnostic — emitted per HID frame on touchpad hover quadrant change.
+    /// `quadrant = 255` is the sentinel for "finger lifted, clear UI hover".
+    TouchpadHover { raw_x: u16, raw_y: u16, quadrant: u32 },
 }
 
 /// Snapshot of the controller's current connection state. Polled by the GUI
@@ -89,6 +96,14 @@ struct HandleInner {
     /// Test-only: sender for the fake gamepad source. `None` in production.
     #[doc(hidden)]
     fake_tx: Mutex<Option<crossbeam_channel::Sender<crate::gamepad::GamepadEvent>>>,
+    /// Live touchpad cursor parameters, shared with the HID worker.
+    /// `set_settings` mutates these through the handle so changes take
+    /// effect on the next decoded frame without rebuilding the engine.
+    cursor_params: CursorParams,
+    /// Manual disconnect signal — Tauri `disconnect_gamepad` IPC sends
+    /// through this. HID worker honors it to release the hidapi device
+    /// handle and return to Searching state without exiting the thread.
+    disconnect_signal: crossbeam_channel::Sender<()>,
 }
 
 // ─── Handle (GUI-side) ───────────────────────────────────────────────────────
@@ -99,6 +114,13 @@ pub struct Handle {
 }
 
 impl Handle {
+    /// Live touchpad cursor parameters. The HID worker reads through
+    /// this every frame; `set_settings` writes through it on the
+    /// engine thread so changes take effect without a config rebuild.
+    pub fn cursor_params(&self) -> CursorParams {
+        self.inner.cursor_params.clone()
+    }
+
     pub fn set_paused(&self, v: bool) {
         self.inner.paused.store(v, Ordering::SeqCst);
     }
@@ -169,6 +191,14 @@ impl Handle {
             }
         }
     }
+
+    /// Manual disconnect — send a signal to the HID worker to drop its
+    /// current device handle and return to Searching. The thread does
+    /// NOT exit; a new controller (the same or different) reconnects
+    /// via the normal handshake path on next button press.
+    pub fn disconnect_current_device(&self) {
+        let _ = self.inner.disconnect_signal.send(());
+    }
 }
 
 // ─── Engine (owns the thread) ────────────────────────────────────────────────
@@ -181,8 +211,15 @@ pub struct Engine {
 impl Engine {
     /// Spawn with a real gamepad source.
     pub fn spawn(cfg: Config, dry_run: bool) -> Result<Self> {
-        let src = GamepadSource::new()?;
-        Self::spawn_inner(cfg, dry_run, src)
+        let cursor_params = CursorParams::with_midpoints(
+            cfg.touchpad_cursor_sensitivity,
+            cfg.touchpad_cursor_enabled,
+            cfg.touchpad_midpoint_x,
+            cfg.touchpad_midpoint_y,
+        );
+        let (disconnect_tx, disconnect_rx) = crossbeam_channel::bounded::<()>(4);
+        let src = GamepadSource::new(cursor_params.clone(), disconnect_rx)?;
+        Self::spawn_inner(cfg, dry_run, src, cursor_params, disconnect_tx)
     }
 
     /// Spawn with a fake gamepad source. Events are injected via
@@ -190,15 +227,28 @@ impl Engine {
     /// Not part of the stable public API — used by integration tests.
     #[doc(hidden)]
     pub fn spawn_with_fake_gamepad(cfg: Config) -> Result<Self> {
+        let cursor_params = CursorParams::with_midpoints(
+            cfg.touchpad_cursor_sensitivity,
+            cfg.touchpad_cursor_enabled,
+            cfg.touchpad_midpoint_x,
+            cfg.touchpad_midpoint_y,
+        );
         let (fake_tx, fake_rx) = unbounded::<crate::gamepad::GamepadEvent>();
         let src = GamepadSource::fake(fake_rx);
-        let engine = Self::spawn_inner(cfg, /*dry_run=*/true, src)?;
+        let (disconnect_tx, _disconnect_rx) = crossbeam_channel::bounded::<()>(4);
+        let engine = Self::spawn_inner(cfg, /*dry_run=*/true, src, cursor_params, disconnect_tx)?;
         // Install the sender into HandleInner.
         *engine.handle.inner.fake_tx.lock().unwrap() = Some(fake_tx);
         Ok(engine)
     }
 
-    fn spawn_inner(cfg: Config, dry_run: bool, src: GamepadSource) -> Result<Self> {
+    fn spawn_inner(
+        cfg: Config,
+        dry_run: bool,
+        src: GamepadSource,
+        cursor_params: CursorParams,
+        disconnect_tx: crossbeam_channel::Sender<()>,
+    ) -> Result<Self> {
         let key_state = safety::shared();
         let (event_tx, event_rx) = unbounded::<EngineEvent>();
 
@@ -213,6 +263,8 @@ impl Engine {
             key_state: key_state.clone(),
             fake_tx: Mutex::new(None),
             current_status: RwLock::new(None),
+            cursor_params,
+            disconnect_signal: disconnect_tx,
         });
 
         let handle = Handle { inner: inner.clone() };
@@ -245,6 +297,8 @@ fn run_loop(h: Arc<HandleInner>, mut source: GamepadSource, dry_run: bool) -> Re
 
     let mut sink = KeyboardSink::new(h.key_state.clone(), tick_jitter_ms, min_press_ms, dry_run)
         .expect("KeyboardSink::new failed");
+    let mut mouse_sink = MouseSink::new(h.key_state.clone(), dry_run)
+        .expect("MouseSink::new failed");
 
     // Set up macro → keyboard channel (std::sync::mpsc, matching MacroEngine).
     let (macro_tx, macro_rx) = std::sync::mpsc::channel::<KeyAction>();
@@ -268,9 +322,10 @@ fn run_loop(h: Arc<HandleInner>, mut source: GamepadSource, dry_run: bool) -> Re
             macros.stop_all();
             // Drain macro-emitted releases so sink's refcounts are balanced.
             while let Ok(action) = macro_rx.try_recv() {
-                execute_action(&action, &mut sink, &mut macros, mapper.config(), &h.event_tx);
+                execute_action(&action, &mut sink, &mut mouse_sink, &mut macros, mapper.config(), &h.event_tx);
             }
             sink.release_all_held();
+            mouse_sink.release_all_held();
         }
         last_paused = paused;
 
@@ -330,13 +385,13 @@ fn run_loop(h: Arc<HandleInner>, mut source: GamepadSource, dry_run: bool) -> Re
                     };
                 }
                 for action in &actions {
-                    execute_action(action, &mut sink, &mut macros, mapper.config(), &h.event_tx);
+                    execute_action(action, &mut sink, &mut mouse_sink, &mut macros, mapper.config(), &h.event_tx);
                 }
             }
 
             // ── Drain macro-emitted key actions ──────────────────────────────
             while let Ok(action) = macro_rx.try_recv() {
-                execute_action(&action, &mut sink, &mut macros, mapper.config(), &h.event_tx);
+                execute_action(&action, &mut sink, &mut mouse_sink, &mut macros, mapper.config(), &h.event_tx);
             }
         }
 
@@ -347,17 +402,19 @@ fn run_loop(h: Arc<HandleInner>, mut source: GamepadSource, dry_run: bool) -> Re
     macros.stop_all();
     // Drain any final macro releases.
     while let Ok(action) = macro_rx.try_recv() {
-        execute_action(&action, &mut sink, &mut macros, mapper.config(), &h.event_tx);
+        execute_action(&action, &mut sink, &mut mouse_sink, &mut macros, mapper.config(), &h.event_tx);
     }
     // sink.drop() will call release_all_held() — that is the iron-rule guarantee.
     // We explicitly drop to make the intent clear.
     drop(sink);
+    drop(mouse_sink);
     Ok(())
 }
 
 fn execute_action(
     action: &KeyAction,
     sink: &mut KeyboardSink,
+    mouse_sink: &mut MouseSink,
     macros: &mut MacroEngine,
     cfg: &Config,
     event_tx: &Sender<EngineEvent>,
@@ -400,6 +457,29 @@ fn execute_action(
             macros.stop(*source_id);
             // MacroEnd with completed=false (interrupted by button release).
             // We don't track name per source_id here; emit a best-effort event.
+        }
+        KeyAction::MousePress(b) => {
+            let _ = mouse_sink.click_press(*b);
+        }
+        KeyAction::MouseRelease(b) => {
+            let _ = mouse_sink.click_release(*b);
+        }
+        KeyAction::MouseMove { dx, dy } => {
+            let _ = mouse_sink.move_rel(*dx, *dy);
+        }
+        KeyAction::TouchpadClick { raw_x, raw_y, quadrant } => {
+            let _ = event_tx.send(EngineEvent::TouchpadClick {
+                raw_x: *raw_x,
+                raw_y: *raw_y,
+                quadrant: *quadrant,
+            });
+        }
+        KeyAction::TouchpadHover { raw_x, raw_y, quadrant } => {
+            let _ = event_tx.send(EngineEvent::TouchpadHover {
+                raw_x: *raw_x,
+                raw_y: *raw_y,
+                quadrant: *quadrant,
+            });
         }
     }
 }

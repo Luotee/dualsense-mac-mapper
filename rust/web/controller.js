@@ -24,17 +24,79 @@
 
 const VIEWBOX = '0 0 240 130';
 
-// Body silhouette: stylised pill with grip lobes at the bottom.
+// Body silhouette: organic twin-grip form with curved top and prominent
+// lower handle lobes. Approximates a generic modern game-controller top
+// view (DualSense-class), drawn with quadratic curves at all corners.
 const BODY_PATH =
-  'M 50 30 Q 38 30 36 50 Q 32 80 62 92 Q 75 102 95 102 ' +
-  'L 145 102 Q 165 102 178 92 Q 208 80 204 50 Q 202 30 190 30 L 50 30 Z';
+  'M 60 28 ' +
+  'Q 44 28 40 38 ' +
+  'Q 30 50 30 64 ' +
+  'Q 30 84 50 96 ' +
+  'Q 58 108 72 112 ' +
+  'Q 86 114 94 108 ' +
+  'L 146 108 ' +
+  'Q 154 114 168 112 ' +
+  'Q 182 108 190 96 ' +
+  'Q 210 84 210 64 ' +
+  'Q 210 50 200 38 ' +
+  'Q 196 28 180 28 ' +
+  'L 60 28 Z';
 
-// Touchpad shape: rounded rect centred at (120, 44).
-const TOUCHPAD = { x: 101, y: 36, w: 38, h: 16, rx: 5 };
+// Trigger horns: small curved caps above the L2/R2 shoulder area,
+// extending upward to evoke the back-side trigger volume seen from
+// the top. Purely decorative; the L1/R1/L2/R2 hit zones are separate.
+const TRIGGER_HORN_L_PATH =
+  'M 44 28 L 76 28 Q 80 26 80 20 ' +
+  'Q 80 8 74 6 L 50 6 Q 44 8 42 18 Q 42 26 44 28 Z';
+const TRIGGER_HORN_R_PATH =
+  'M 196 28 L 164 28 Q 160 26 160 20 ' +
+  'Q 160 8 166 6 L 190 6 Q 196 8 198 18 Q 198 26 196 28 Z';
+
+// Light bar seam: a thin contour outlining the touchpad recess. Sits
+// just outside the touchpad rect so the bound-quadrant fill colours
+// show inside, while the seam itself reads as the visible boundary
+// between the upper / lower halves of the body.
+const LIGHT_BAR_PATH =
+  'M 96 34 Q 96 30 100 30 L 140 30 Q 144 30 144 34 ' +
+  'L 144 56 Q 144 60 140 60 L 100 60 Q 96 60 96 56 Z';
+
+// Microphone slot decoration — small rect centred between the sticks.
+const MIC_RECT = { x: 118, y: 96, w: 4, h: 1.5 };
+
+// Touchpad shape: inside LIGHT_BAR boundary with ~2px padding.
+const TOUCHPAD = { x: 100, y: 34, w: 40, h: 24, rx: 4 };
+// Gap between adjacent touchpad quadrants — matches the visual spacing
+// pattern used by the d-pad pentagons and stick wedges. Tune here if a
+// designer wants a tighter or wider cross-line.
+const TOUCHPAD_QUAD_GAP = 1.5;
+
+// Issue 7: subtle rounded corners for D-pad wedges + stick donut quarters.
+// 0 = sharp (v2.0.0 behaviour). Tuned to ~0.8 to match L1 button feel.
+export const CORNER_RADIUS = {
+  dpad: 0.8,
+  stickSlice: 0.7,
+};
+
+// Issue 4: per-button position fine-tune. Map id → { dx, dy }.
+// Tuner generates this; production reads and applies as SVG translate.
+// Empty by default — every button uses its baseline geometry.
+// Scale is intentionally not supported at this level (use cluster sliders).
+export const BUTTON_OVERRIDES = new Map([
+  // [13, { dx: -0.5, dy: 0 }],
+]);
+
+function applyButtonOverride(shape, id) {
+  const o = BUTTON_OVERRIDES.get(id);
+  if (!o) return;
+  const dx = o.dx ?? 0;
+  const dy = o.dy ?? 0;
+  if (dx === 0 && dy === 0) return;
+  shape.setAttribute('transform', `translate(${dx} ${dy})`);
+}
 
 // Stick well centres
-const L_STICK = { cx: 84,  cy: 82, r: 9 };
-const R_STICK = { cx: 156, cy: 82, r: 9 };
+const L_STICK = { cx: 92,  cy: 88, r: 8 };
+const R_STICK = { cx: 148, cy: 88, r: 8 };
 
 // ─── Element descriptors ──────────────────────────────────────────────────────
 //
@@ -44,38 +106,37 @@ const R_STICK = { cx: 156, cy: 82, r: 9 };
 
 function elements() {
   return [
-    // Triggers (top) — same dimensions as the shoulders below, and the
-    // vertical gap between trigger / shoulder / body is uniformly 2 px
-    // (L2 ends at y=20, L1 starts y=22; L1 ends y=28, body top y=30).
-    el(23, 'trigger',    { rx: 48,  ry: 14, w: 22, h: 6 },  'L2'),
-    el(24, 'trigger',    { rx: 170, ry: 14, w: 22, h: 6 },  'R2'),
+    // Triggers — match horn positions
+    el(23, 'trigger',    { rx: 48,  ry: 12, w: 22, h: 5 },  'L2'),
+    el(24, 'trigger',    { rx: 170, ry: 12, w: 22, h: 5 },  'R2'),
+    // Shoulders just below trigger horns
+    el(9,  'shoulder',   { rx: 48,  ry: 21, w: 22, h: 5 },  'L1'),
+    el(10, 'shoulder',   { rx: 170, ry: 21, w: 22, h: 5 },  'R1'),
 
-    // Shoulders (just below triggers, on body's top edge)
-    el(9,  'shoulder',   { rx: 48,  ry: 22, w: 22, h: 6 },  'L1'),
-    el(10, 'shoulder',   { rx: 170, ry: 22, w: 22, h: 6 },  'R1'),
+    // Meta buttons flank the touchpad
+    el(4,  'meta_rect',  { rx: 82,  ry: 36, w: 7,  h: 2.5 },  'Share'),
+    el(6,  'meta_rect',  { rx: 151, ry: 36, w: 7,  h: 2.5 },  'Options'),
 
-    // Meta buttons (Share / Options)
-    el(4,  'meta_rect',  { rx: 82,  ry: 38, w: 7,  h: 3 },  'Share'),
-    el(6,  'meta_rect',  { rx: 151, ry: 38, w: 7,  h: 3 },  'Options'),
+    // Touchpad — 4 quadrant hit zones with a centre-cross gap matching
+    // the d-pad / stick-wedge spacing convention. Each quadrant shrinks
+    // by GAP/2 along the centre axes; the decorative pad rect drawn in
+    // render() shows through the gap so the visual centre-line reads.
+    ...touchpadQuadElements(),
 
-    // PS logo button (centre, below touchpad)
-    el(5,  'circle',     { cx: 120, cy: 62, r: 3 },          'PS'),
+    // PS logo button — slightly lower, between sticks
+    el(5,  'circle',     { cx: 120, cy: 88, r: 2.5 },         'PS'),
 
-    // D-pad: four label-shaped pentagons (flat base outward, apex
-    // pointing toward the centre). Replaces the v1.1.0 cross sprite +
-    // outward-arrow wedges — the user wanted the d-pad to read like
-    // four independent face-button-style targets, with no underlying
-    // cross silhouette competing for attention.
-    el(11, 'dpad_wedge', { cx: 59, cy: 57, dir: 'up'    },   'D-up'),
-    el(12, 'dpad_wedge', { cx: 59, cy: 57, dir: 'down'  },   'D-down'),
-    el(13, 'dpad_wedge', { cx: 59, cy: 57, dir: 'left'  },   'D-left'),
-    el(14, 'dpad_wedge', { cx: 59, cy: 57, dir: 'right' },   'D-right'),
+    // D-pad — slightly inboard/lower to match top-view proportions
+    el(11, 'dpad_wedge', { cx: 64, cy: 60, dir: 'up'    },   'D-up'),
+    el(12, 'dpad_wedge', { cx: 64, cy: 60, dir: 'down'  },   'D-down'),
+    el(13, 'dpad_wedge', { cx: 64, cy: 60, dir: 'left'  },   'D-left'),
+    el(14, 'dpad_wedge', { cx: 64, cy: 60, dir: 'right' },   'D-right'),
 
-    // Face buttons (right diamond)
-    el(3,  'face',       { cx: 184, cy: 50, r: 4 },           'Triangle'),  // top
-    el(1,  'face',       { cx: 192, cy: 58, r: 4 },           'Circle'),    // right
-    el(0,  'face',       { cx: 184, cy: 66, r: 4 },           'Cross'),     // bottom
-    el(2,  'face',       { cx: 176, cy: 58, r: 4 },           'Square'),    // left
+    // Face buttons (right diamond) — mirror of D-pad position
+    el(3,  'face',       { cx: 176, cy: 52, r: 4 },           'Triangle'),
+    el(1,  'face',       { cx: 184, cy: 60, r: 4 },           'Circle'),
+    el(0,  'face',       { cx: 176, cy: 68, r: 4 },           'Cross'),
+    el(2,  'face',       { cx: 168, cy: 60, r: 4 },           'Square'),
 
     // L stick well sprite (no hit zone)
     { sprite: 'stick_well', side: 'L', c: L_STICK },
@@ -107,12 +168,34 @@ function el(id, kind, geo, label) {
   return { id, kind, geo, label };
 }
 
+function touchpadQuadElements() {
+  const g = TOUCHPAD_QUAD_GAP;
+  const r = TOUCHPAD.rx;
+  const cx = TOUCHPAD.x + TOUCHPAD.w / 2;
+  const cy = TOUCHPAD.y + TOUCHPAD.h / 2;
+  const w = TOUCHPAD.w / 2 - g / 2;
+  const h = TOUCHPAD.h / 2 - g / 2;
+  const leftX  = TOUCHPAD.x;
+  const rightX = cx + g / 2;
+  const topY   = TOUCHPAD.y;
+  const botY   = cy + g / 2;
+  // `corner` names which of the 4 corners is the outer rounded one;
+  // the other three corners are sharp (inner edges meeting the gap).
+  return [
+    el(25, 'touchpad_quad', { x: leftX,  y: topY, w, h, r, corner: 'tl' }, 'TP-TL'),
+    el(26, 'touchpad_quad', { x: rightX, y: topY, w, h, r, corner: 'tr' }, 'TP-TR'),
+    el(27, 'touchpad_quad', { x: leftX,  y: botY, w, h, r, corner: 'bl' }, 'TP-BL'),
+    el(28, 'touchpad_quad', { x: rightX, y: botY, w, h, r, corner: 'br' }, 'TP-BR'),
+  ];
+}
+
 // ─── Binding → CSS class ──────────────────────────────────────────────────────
 
 function kindClass(kind) {
   switch (kind) {
     case 'key':     return 'binding-key';
     case 'macro':   return 'binding-macro';
+    case 'mouse':   return 'binding-mouse';
     case 'unbound': return 'binding-unbound';
     default:        return 'binding-unbound';
   }
@@ -142,10 +225,31 @@ export function render(parent, bindings) {
   body.classList.add('body');
   svg.appendChild(body);
 
+  // Trigger horns
+  const hornL = document.createElementNS(ns, 'path');
+  hornL.setAttribute('d', TRIGGER_HORN_L_PATH);
+  hornL.classList.add('body');
+  svg.appendChild(hornL);
+  const hornR = document.createElementNS(ns, 'path');
+  hornR.setAttribute('d', TRIGGER_HORN_R_PATH);
+  hornR.classList.add('body');
+  svg.appendChild(hornR);
+
   // Touchpad decorative shape
   const tp = mkRect(ns, TOUCHPAD.x, TOUCHPAD.y, TOUCHPAD.w, TOUCHPAD.h, 'touchpad');
   tp.setAttribute('rx', String(TOUCHPAD.rx));
   svg.appendChild(tp);
+
+  // Light bar seam — decorative thin contour around touchpad area.
+  const bar = document.createElementNS(ns, 'path');
+  bar.setAttribute('d', LIGHT_BAR_PATH);
+  bar.classList.add('light-bar');
+  svg.appendChild(bar);
+
+  // Microphone slot decoration
+  const mic = mkRect(ns, MIC_RECT.x, MIC_RECT.y, MIC_RECT.w, MIC_RECT.h, 'mic-slot');
+  mic.setAttribute('rx', '0.6');
+  svg.appendChild(mic);
 
   // Render each element descriptor
   for (const e of elements()) {
@@ -180,6 +284,14 @@ export function render(parent, bindings) {
         shape.setAttribute('rx', '2');
         break;
       }
+      case 'touchpad_quad': {
+        // Each quadrant fills the touchpad rounded rect with ONE outer
+        // corner curved (matching the pad's rx) and three inner corners
+        // sharp, so the four quadrants together rebuild the rounded
+        // touchpad outline with a cross-shaped gap in the middle.
+        shape = mkTouchpadQuad(ns, e.geo, `hit ${cls}`);
+        break;
+      }
       case 'circle':
       case 'face':
       case 'stick_press': {
@@ -208,6 +320,7 @@ export function render(parent, bindings) {
 
     shape.dataset.id    = String(e.id);
     shape.dataset.label = e.label;
+    applyButtonOverride(shape, e.id);
     svg.appendChild(shape);
   }
 
@@ -257,6 +370,102 @@ export function clearPress(svg, id) {
     if (ring.parentNode) ring.remove();
     _flashes.delete(key);
   }
+}
+
+// ─── Touchpad debug dot ────────────────────────────────────────────────────────
+//
+// Renders a small dot on the touchpad SVG at the proportional position
+// of the most recent click. Lets the user verify the raw coords being
+// captured match where they actually touched — if they don't, the
+// `touchpad_midpoint_x` / `touchpad_midpoint_y` settings can be tuned
+// to match the user's physical pad coordinate range.
+
+const TOUCHPAD_RAW_MAX_X = 1919;
+const TOUCHPAD_RAW_MAX_Y = 1079;
+let _debugDot = null;
+let _debugDotTimer = null;
+
+/**
+ * Show a debug dot at the touchpad position corresponding to (raw_x,
+ * raw_y). The dot fades by being removed after a short timeout.
+ *
+ * @param {SVGElement} svg
+ * @param {number} raw_x  - 0..1919 (or whatever the pad reports)
+ * @param {number} raw_y  - 0..1079
+ */
+export function showTouchpadDot(svg, raw_x, raw_y) {
+  if (!svg) return;
+  if (_debugDot && _debugDot.parentNode) _debugDot.remove();
+  if (_debugDotTimer) clearTimeout(_debugDotTimer);
+  const ns = 'http://www.w3.org/2000/svg';
+  const dot = document.createElementNS(ns, 'circle');
+  const cx = TOUCHPAD.x + (raw_x / TOUCHPAD_RAW_MAX_X) * TOUCHPAD.w;
+  const cy = TOUCHPAD.y + (raw_y / TOUCHPAD_RAW_MAX_Y) * TOUCHPAD.h;
+  dot.setAttribute('cx', String(cx));
+  dot.setAttribute('cy', String(cy));
+  dot.setAttribute('r',  '1.2');
+  dot.setAttribute('class', 'touchpad-debug-dot');
+  svg.appendChild(dot);
+  _debugDot = dot;
+  _debugDotTimer = setTimeout(() => {
+    if (_debugDot === dot && dot.parentNode) dot.remove();
+    if (_debugDot === dot) _debugDot = null;
+    _debugDotTimer = null;
+  }, 1200);
+}
+
+// ─── Touchpad hover preview ───────────────────────────────────────────────────
+//
+// Issue 3: continuous hover preview. While the finger is active, the engine
+// emits 'touchpad-hover' per frame on quadrant change (dedupe-on-change),
+// and on lift emits a sentinel `quadrant=255`. The frontend highlights the
+// active quadrant and renders a persistent debug dot at the raw position.
+// Distinct from `showTouchpadDot` (transient post-click) — this one updates
+// live and persists while the finger is down.
+
+let _hoverDot = null;
+
+/**
+ * Highlight quadrant `quadrantId` (25..=28) and move a persistent debug dot
+ * to the proportional position of (rawX, rawY) inside the touchpad bbox.
+ */
+export function showTouchpadHover(svg, quadrantId, rawX, rawY) {
+  if (!svg) return;
+  // Highlight: add `hover` class to the matching quadrant, remove from others.
+  for (const id of [25, 26, 27, 28]) {
+    const el = svg.querySelector(`[data-id="${id}"]`);
+    if (!el) continue;
+    if (id === quadrantId) el.classList.add('hover');
+    else                   el.classList.remove('hover');
+  }
+  // Debug dot: live-updated while finger is down.
+  const ns = 'http://www.w3.org/2000/svg';
+  if (!_hoverDot || !_hoverDot.parentNode) {
+    _hoverDot = document.createElementNS(ns, 'circle');
+    _hoverDot.setAttribute('r', '1.0');
+    _hoverDot.setAttribute('class', 'touchpad-hover-dot');
+    svg.appendChild(_hoverDot);
+  }
+  const cx = TOUCHPAD.x + (rawX / TOUCHPAD_RAW_MAX_X) * TOUCHPAD.w;
+  const cy = TOUCHPAD.y + (rawY / TOUCHPAD_RAW_MAX_Y) * TOUCHPAD.h;
+  _hoverDot.setAttribute('cx', String(cx));
+  _hoverDot.setAttribute('cy', String(cy));
+}
+
+/**
+ * Clear the hover highlight and remove the debug dot. Called on finger
+ * lift (engine sentinel `quadrant=255`).
+ */
+export function clearTouchpadHover(svg) {
+  if (!svg) return;
+  for (const id of [25, 26, 27, 28]) {
+    const el = svg.querySelector(`[data-id="${id}"]`);
+    if (el) el.classList.remove('hover');
+  }
+  if (_hoverDot && _hoverDot.parentNode) {
+    _hoverDot.remove();
+  }
+  _hoverDot = null;
 }
 
 // ─── Selection ring ───────────────────────────────────────────────────────────
@@ -332,6 +541,37 @@ function mkCircle(ns, cx, cy, r, cls) {
 }
 
 /**
+ * Rectangle with exactly one rounded corner (the "outer" corner of a
+ * touchpad quadrant). The other three corners are sharp so adjacent
+ * quadrants share straight edges across the centre gap and the four
+ * quadrants together rebuild the pad's rounded outer outline.
+ *
+ * `geo` shape:
+ *   { x, y, w, h, r, corner: 'tl' | 'tr' | 'bl' | 'br' }
+ */
+function mkTouchpadQuad(ns, geo, cls) {
+  const { x, y, w, h, r, corner } = geo;
+  const path = (() => {
+    const x1 = x + w, y1 = y + h;
+    switch (corner) {
+      case 'tl':
+        return `M ${x} ${y + r} A ${r} ${r} 0 0 1 ${x + r} ${y} L ${x1} ${y} L ${x1} ${y1} L ${x} ${y1} Z`;
+      case 'tr':
+        return `M ${x} ${y} L ${x1 - r} ${y} A ${r} ${r} 0 0 1 ${x1} ${y + r} L ${x1} ${y1} L ${x} ${y1} Z`;
+      case 'bl':
+        return `M ${x} ${y} L ${x1} ${y} L ${x1} ${y1} L ${x + r} ${y1} A ${r} ${r} 0 0 1 ${x} ${y1 - r} Z`;
+      case 'br':
+      default:
+        return `M ${x} ${y} L ${x1} ${y} L ${x1} ${y1 - r} A ${r} ${r} 0 0 1 ${x1 - r} ${y1} L ${x} ${y1} Z`;
+    }
+  })();
+  const p = document.createElementNS(ns, 'path');
+  p.setAttribute('d',     path);
+  p.setAttribute('class', cls);
+  return p;
+}
+
+/**
  * Pentagon-shaped arrow hit zone pointing outward from a centre point.
  * Used for the four d-pad directions: a small flat-tail / pointed-tip
  * shape that sits over one arm of the cross sprite so the bound
@@ -392,11 +632,8 @@ function mkArrow(ns, cx, cy, dir, cls) {
     left:  ([x, y]) => [ y, -x],   // 90° CCW
   }[dir];
 
-  const pts = up
-    .map(map)
-    .map(([dx, dy]) => `${cx + dx} ${cy + dy}`)
-    .join(' L ');
-  const d = `M ${pts} Z`;
+  const rotated = up.map(map).map(([dx, dy]) => [cx + dx, cy + dy]);
+  const d = buildRoundedPolygonPath(rotated, CORNER_RADIUS.dpad, [0, 1]);
 
   const p = document.createElementNS(ns, 'path');
   p.setAttribute('d',     d);
@@ -469,16 +706,122 @@ function mkQuarter(ns, cx, cy, dir, cls) {
   // SVG arc sweep flag picks the short way round. Outer arc travels
   // through the direction's outer tip (e.g. straight up for `up`);
   // inner arc travels the opposite sense back.
-  const pathD = [
-    `M ${vO_R[0]} ${vO_R[1]}`,
-    `A ${r_out} ${r_out} 0 0 0 ${vO_L[0]} ${vO_L[1]}`,
-    `L ${vI_L[0]} ${vI_L[1]}`,
-    `A ${r_in}  ${r_in}  0 0 1 ${vI_R[0]} ${vI_R[1]}`,
-    'Z',
-  ].join(' ');
+  const rr = CORNER_RADIUS.stickSlice;
+  const pathD = buildRoundedQuarterPath(vO_R, vO_L, vI_L, vI_R, r_out, r_in, rr);
 
   const p = document.createElementNS(ns, 'path');
   p.setAttribute('d',     pathD);
   p.setAttribute('class', cls);
   return p;
+}
+
+// ─── Rounded corner helpers ───────────────────────────────────────────────────
+
+/**
+ * Build an SVG path for an arbitrary closed polygon with selected corners
+ * rounded via quadratic Bezier inset.
+ *
+ * @param {Array<[number, number]>} verts - vertex coordinates in order
+ * @param {number} rr                     - corner radius (0 = sharp)
+ * @param {Array<number>} roundIdx        - indexes (into verts) of corners to round
+ * @returns {string} SVG path d-attribute
+ */
+function buildRoundedPolygonPath(verts, rr, roundIdx) {
+  const n = verts.length;
+  if (rr <= 0 || roundIdx.length === 0) {
+    return 'M ' + verts.map(([x, y]) => `${x} ${y}`).join(' L ') + ' Z';
+  }
+  const shouldRound = new Set(roundIdx);
+  // For each vertex P, compute the inset points along P→prev and P→next
+  // (only if P is in roundIdx). Otherwise the segment ends/begins at P itself.
+  const segs = [];
+  for (let i = 0; i < n; i++) {
+    const prev = verts[(i - 1 + n) % n];
+    const cur  = verts[i];
+    const next = verts[(i + 1) % n];
+    if (!shouldRound.has(i)) {
+      segs.push({ start: cur, end: cur, control: null });
+      continue;
+    }
+    // Inset toward prev and toward next by rr.
+    const towardPrev = insetAlong(cur, prev, rr);
+    const towardNext = insetAlong(cur, next, rr);
+    segs.push({ start: towardPrev, end: towardNext, control: cur });
+  }
+  // Build path: start at first segment's start (if rounded) or first vertex.
+  // Then for each vertex: L to seg.start (the inset-from-prev), Q cur seg.end (if rounded).
+  let d = `M ${formatPt(segs[0].start)}`;
+  for (let i = 0; i < n; i++) {
+    const s = segs[i];
+    if (s.control !== null) {
+      // Round: Q from current point through control (corner) to seg.end (inset toward next).
+      d += ` Q ${formatPt(s.control)} ${formatPt(s.end)}`;
+    }
+    // L to next segment's start.
+    const nextSeg = segs[(i + 1) % n];
+    if (nextSeg.start !== s.end || s.control === null) {
+      d += ` L ${formatPt(nextSeg.start)}`;
+    }
+  }
+  d += ' Z';
+  return d;
+}
+
+function insetAlong(from, to, rr) {
+  const dx = to[0] - from[0];
+  const dy = to[1] - from[1];
+  const len = Math.hypot(dx, dy);
+  if (len < rr * 2) return [...from];  // edge too short to inset cleanly
+  return [from[0] + (dx / len) * rr, from[1] + (dy / len) * rr];
+}
+
+function formatPt(p) {
+  return `${p[0].toFixed(3)} ${p[1].toFixed(3)}`;
+}
+
+/**
+ * Build an SVG path for a rounded donut quarter slice.
+ * Vertices in CCW order: outer-right (vOR), outer-left (vOL), inner-left (vIL), inner-right (vIR).
+ * Outer arc connects vOR → vOL through the outer tip.
+ * Inner arc connects vIL → vIR through the inner tip.
+ *
+ * For each corner, the inset along an arc edge uses chord direction
+ * (approximation valid for rr <= 5 visually).
+ */
+function buildRoundedQuarterPath(vOR, vOL, vIL, vIR, rOut, rIn, rr) {
+  if (rr <= 0) {
+    return [
+      `M ${vOR[0]} ${vOR[1]}`,
+      `A ${rOut} ${rOut} 0 0 0 ${vOL[0]} ${vOL[1]}`,
+      `L ${vIL[0]} ${vIL[1]}`,
+      `A ${rIn}  ${rIn}  0 0 1 ${vIR[0]} ${vIR[1]}`,
+      'Z',
+    ].join(' ');
+  }
+  // Inset each corner along its two incident edges.
+  // vOR neighbours: outer-arc toward vOL (chord-approx), and line-edge toward vIR.
+  // vOL neighbours: outer-arc toward vOR, and line-edge toward vIL.
+  // vIL neighbours: line-edge toward vOL, and inner-arc toward vIR.
+  // vIR neighbours: inner-arc toward vIL, and line-edge toward vOR.
+  const vOR_toOL  = insetAlong(vOR, vOL, rr);
+  const vOR_toIR  = insetAlong(vOR, vIR, rr);
+  const vOL_toOR  = insetAlong(vOL, vOR, rr);
+  const vOL_toIL  = insetAlong(vOL, vIL, rr);
+  const vIL_toOL  = insetAlong(vIL, vOL, rr);
+  const vIL_toIR  = insetAlong(vIL, vIR, rr);
+  const vIR_toIL  = insetAlong(vIR, vIL, rr);
+  const vIR_toOR  = insetAlong(vIR, vOR, rr);
+  // Path: start at vOR's outer-arc-side inset, arc to vOL's outer-arc-side inset (smaller sweep since insets shorten the arc).
+  return [
+    `M ${formatPt(vOR_toOL)}`,
+    `A ${rOut} ${rOut} 0 0 0 ${formatPt(vOL_toOR)}`,
+    `Q ${formatPt(vOL)} ${formatPt(vOL_toIL)}`,
+    `L ${formatPt(vIL_toOL)}`,
+    `Q ${formatPt(vIL)} ${formatPt(vIL_toIR)}`,
+    `A ${rIn}  ${rIn}  0 0 1 ${formatPt(vIR_toIL)}`,
+    `Q ${formatPt(vIR)} ${formatPt(vIR_toOR)}`,
+    `L ${formatPt(vOR_toIR)}`,
+    `Q ${formatPt(vOR)} ${formatPt(vOR_toOL)}`,
+    'Z',
+  ].join(' ');
 }

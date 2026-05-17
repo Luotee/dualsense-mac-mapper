@@ -15,7 +15,7 @@ use tempfile::NamedTempFile;
 
 fn baseline_config() -> Config {
     let mut buttons: BTreeMap<String, ButtonEntry> = BTreeMap::new();
-    for id in 0..=24u32 {
+    for id in dualsense_mapper::config::VALID_BUTTON_IDS {
         buttons.insert(
             id.to_string(),
             ButtonEntry { label: format!("b{id}"), binding: Binding::Unbound },
@@ -30,6 +30,16 @@ fn baseline_config() -> Config {
         log_events: false,
         buttons,
         macros: BTreeMap::new(),
+        touchpad_cursor_enabled: true,
+        touchpad_cursor_sensitivity: 1.5,
+        touchpad_midpoint_x: 960,
+        touchpad_midpoint_y: 540,
+        touchpad_accel_slow_threshold: 5,
+        touchpad_accel_fast_threshold: 20,
+        touchpad_accel_gain_slow: 0.5,
+        touchpad_accel_gain_fast: 1.5,
+        touchpad_deadzone_radius: 2,
+        touchpad_click_freeze_enabled: true,
     }
 }
 

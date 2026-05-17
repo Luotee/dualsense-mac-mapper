@@ -3,6 +3,118 @@
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/);
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.1.0] - 2026-05-17
+
+### Added
+
+- **Touchpad as laptop-style touchpad.** One finger on the
+  DualSense touchpad drives the OS cursor (relative motion).
+  Cursor is on by default; toggle and tune sensitivity in
+  Settings → Touchpad (range `[0.1, 10.0]`, default `1.5`).
+  Sub-2-pixel motion is filtered so a resting finger does not
+  synthesise drift.
+- **Touchpad press → 4 quadrant bindings.** The whole-pad click
+  emits `ButtonDown(25..=28)` based on which quadrant
+  (TL=25 / TR=26 / BL=27 / BR=28, split at x=960 / y=540) the
+  finger was in at click-down. A drag across quadrant boundaries
+  while the click is held keeps the original quadrant — matches
+  laptop touchpad behaviour, lets users drag-select with mouse
+  left held throughout. Default binding for all four: mouse
+  left click.
+- **`Binding::Mouse(MouseButton)`** new binding type. JSON form:
+  `{ "type": "mouse", "value": "<kebab-case>" }`. Supported
+  values: `left`, `middle`, `right`, `wheel-up`, `wheel-down`.
+  Wheel values are one-shot scrolls (press fires the scroll;
+  release is a no-op).
+- **GUI** controller diagram splits the touchpad rect into four
+  bindable quadrants; the bind popup gains a "Mouse" segment with
+  the 5-option picker; the chip list extends to ids `0..=28`.
+- **Settings tab** adds a Touchpad section (cursor toggle +
+  sensitivity number input). Saving pushes the values straight
+  to the HID worker's atomic cursor params, so changes take
+  effect on the next decoded frame — no restart.
+
+### Changed
+
+- **`VALID_BUTTON_IDS` extends to `0..=28`.** Ids 25..=28 are
+  the four touchpad quadrants. v2.0 configs (which never had
+  these ids) auto-migrate on load — `Config::fill_touchpad_defaults`
+  inserts the missing ids as `Unbound`, and `ConfigDoc::load`
+  patches the raw JSON view so the next `write_atomic` emits
+  the new ids. Existing user configs continue to load and
+  validate without manual edits.
+- **Default `dualsense-mapper.json`** ships with quadrants
+  25..=28 bound to `Mouse(Left)` and the two new top-level
+  fields (`touchpad_cursor_enabled`, `touchpad_cursor_sensitivity`).
+
+### Iron rules
+
+- **Rule #1** updated: `Config::validate` now requires all ids
+  `0..=28`, not `0..=24`. Loaders auto-fill the new ids before
+  validation so MINOR semantics are preserved.
+- **Rule #3** amended: `release_all_held` and the panic hook
+  now release every held key **and** every held mouse button.
+  `KeyState` tracks both refcount tables;
+  `emergency_release_all` walks both and synthesises
+  `Direction::Release` through enigo for each.
+
+### Fixed (post-fix4 polish — 8 user-reported issues)
+
+- **Visual feedback semantics.** Physical gamepad press lights only
+  the mapped button; keyboard press lights all bound buttons.
+  `keyboard_mirror.js` now uses defer-and-check 30 ms: on keydown,
+  the mirror flash is deferred 30 ms and skipped if any `button-down`
+  IPC arrives in that window (engine synth detected). Replaces
+  fix4's racy 250 ms forward suppression that was missing race
+  cases where the synth keydown beat the IPC by < 15 ms.
+- **Touchpad cursor drift on click.** Physical press no longer
+  shifts the cursor. The HID worker now suppresses cursor deltas
+  for the full duration a touchpad button is held (Issue 8
+  "click freeze" layer 1). Mirrors Synaptics PalmCheck-Enhanced /
+  libinput thumb-detection on Clickpads.
+
+### Added (post-fix4)
+
+- **Touchpad continuous hover preview.** Per-frame quadrant emit
+  with dedupe-on-change. New `GamepadEvent::TouchpadHover {
+  raw_x, raw_y, quadrant }` (`quadrant=255` sentinel = "finger
+  lifted"). Frontend live-highlights the active quadrant + draws
+  a persistent debug dot at the raw finger position so users can
+  empirically calibrate `touchpad_midpoint_x/y`.
+- **Touchpad cursor acceleration curve.** libinput-style: slow
+  region (raw |Δ| < 5 px/frame) uses gain × 0.5 for precision,
+  fast (> 20 px/frame) uses × 1.5 for flick, linear interp
+  between. Replaces the v2.1.0-fix4 raw `× sensitivity`
+  mapping. Tunable per-axis in Settings.
+- **Touchpad stationary deadzone.** Rolling 3-frame magnitude
+  window. Sub-radius motion suppressed (anti-jitter). Default
+  radius 2 raw px; range 0..=50 in Settings.
+- **Disconnect button** in the toolbar. Sends a manual
+  `disconnect_gamepad` IPC; the HID worker drops the current
+  device handle and returns to Searching state (thread stays
+  alive). Press any controller button to reconnect.
+- **Rounded outer corners** on D-pad pentagons and stick donut
+  quarters. Subtle (~0.7–0.8 px inset), matching the L1
+  button's `rx="2"` corner feel. Tunable via
+  `tools/controller_tuner.html` → "Corner radius" group.
+- **Key binding chip list** uses 2-column CSS grid layout.
+  29 rows fit the viewport without scroll.
+- **New Settings fields** for cursor filter: `Click freeze`,
+  `Accel slow/fast threshold`, `Accel slow/fast gain`,
+  `Stationary deadzone`. Live-pushed to HID worker atomics
+  via `CursorParams`.
+
+### Config (post-fix4)
+
+- 6 new top-level optional fields (auto-filled on load via
+  `#[serde(default)]` for v2.0.0 / v2.1.0-fix4 configs):
+  - `touchpad_click_freeze_enabled` (bool, default `true`)
+  - `touchpad_accel_slow_threshold` (u32 raw px/frame, default `5`)
+  - `touchpad_accel_fast_threshold` (u32 raw px/frame, default `20`)
+  - `touchpad_accel_gain_slow` (f32, default `0.5`)
+  - `touchpad_accel_gain_fast` (f32, default `1.5`)
+  - `touchpad_deadzone_radius` (u32 raw px, default `2`)
+
 ## [2.0.0] - 2026-05-17
 
 ### Breaking changes

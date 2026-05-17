@@ -14,6 +14,17 @@ export async function init() {
   hookLiveHighlight();
   listenConfigChanged();
   renderChipList();
+
+  const btn = document.getElementById('btn-disconnect');
+  if (btn) {
+    btn.addEventListener('click', async () => {
+      try {
+        await invoke('disconnect_gamepad');
+      } catch (e) {
+        console.error('disconnect_gamepad failed:', e);
+      }
+    });
+  }
 }
 
 async function reload() {
@@ -81,6 +92,17 @@ function hookLiveHighlight() {
   listen('button-up', payload => {
     controller.clearPress(svgEl, payload.id);
   });
+  listen('touchpad-click', payload => {
+    controller.showTouchpadDot(svgEl, payload.raw_x, payload.raw_y);
+  });
+  listen('touchpad-hover', payload => {
+    // Sentinel: quadrant=255 means finger lifted.
+    if (payload.quadrant === 255) {
+      controller.clearTouchpadHover(svgEl);
+    } else {
+      controller.showTouchpadHover(svgEl, payload.quadrant, payload.raw_x, payload.raw_y);
+    }
+  });
 }
 
 function listenConfigChanged() {
@@ -94,7 +116,7 @@ function renderChipList() {
   const host = document.getElementById('chip-list');
   if (!host) return;
   host.innerHTML = '';
-  for (let id = 0; id <= 24; id++) {
+  for (let id = 0; id <= 28; id++) {
     const entry = config.buttons[String(id)];
     if (!entry) continue;
     const row = document.createElement('div');
@@ -113,6 +135,7 @@ function renderChipList() {
 function renderChip(entry, kind) {
   if (kind === 'key')   return `<code class="chip chip-key">${escape(valueOf(entry))}</code>`;
   if (kind === 'macro') return `<code class="chip chip-macro">&#x26A1; ${escape(valueOf(entry))}</code>`;
+  if (kind === 'mouse') return `<code class="chip chip-mouse">&#x1F5B1; ${escape(valueOf(entry))}</code>`;
   return `<span class="chip-mute">unbound</span>`;
 }
 function escape(s) { return String(s).replace(/[<>&]/g, c => ({'<': '&lt;', '>': '&gt;', '&': '&amp;'}[c])); }

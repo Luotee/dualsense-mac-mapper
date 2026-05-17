@@ -7,6 +7,7 @@
 
 use anyhow::{Context, Result};
 use clap::{ArgAction, Parser};
+use crossbeam_channel;
 use dualsense_mapper::app;
 use dualsense_mapper::config::Config;
 use dualsense_mapper::gamepad::{GamepadEvent, GamepadSource};
@@ -274,7 +275,8 @@ fn list_buttons(cfg: Option<Config>) -> Result<()> {
             .unwrap_or_else(|| "<no label — id not in config>".into())
     };
 
-    let mut source = GamepadSource::new()?;
+    let (_dummy_disconnect_tx, dummy_disconnect_rx) = crossbeam_channel::bounded::<()>(4);
+    let mut source = GamepadSource::new(dualsense_mapper::gamepad::CursorParams::default(), dummy_disconnect_rx)?;
     println!("Press a button or move a stick. Ctrl-C to quit.");
 
     let shutdown = Arc::new(AtomicBool::new(false));
@@ -299,6 +301,11 @@ fn list_buttons(cfg: Option<Config>) -> Result<()> {
                     println!("  [axis  ] id={axis:<3} v={value:+.2}     (stick)"),
                 GamepadEvent::Trigger { axis, value } =>
                     println!("  [trig  ] id={axis:<3} v={value:+.2}     (trigger normalized)"),
+                GamepadEvent::MouseDelta { dx, dy } =>
+                    println!("  [touch ] dx={dx:<+4} dy={dy:<+4}  (touchpad cursor)"),
+                GamepadEvent::TouchpadClick { raw_x, raw_y, quadrant } =>
+                    println!("  [tpclick] raw=({raw_x:<5},{raw_y:<5}) quadrant={quadrant}"),
+                GamepadEvent::TouchpadHover { .. } => {}
             }
         }
         std::thread::sleep(std::time::Duration::from_millis(10));
