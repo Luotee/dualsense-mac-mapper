@@ -44,11 +44,11 @@ const R_STICK = { cx: 156, cy: 82, r: 9 };
 
 function elements() {
   return [
-    // Triggers (top) — same dimensions as the shoulders below; the
-    // user asked for L2/R2 to match L1/R1 visually instead of being
-    // the chunky over-sized blocks they were in v1.0.x.
-    el(23, 'trigger',    { rx: 48,  ry: 10, w: 22, h: 6 },  'L2'),
-    el(24, 'trigger',    { rx: 170, ry: 10, w: 22, h: 6 },  'R2'),
+    // Triggers (top) — same dimensions as the shoulders below, and the
+    // vertical gap between trigger / shoulder / body is uniformly 2 px
+    // (L2 ends at y=20, L1 starts y=22; L1 ends y=28, body top y=30).
+    el(23, 'trigger',    { rx: 48,  ry: 14, w: 22, h: 6 },  'L2'),
+    el(24, 'trigger',    { rx: 170, ry: 14, w: 22, h: 6 },  'R2'),
 
     // Shoulders (just below triggers, on body's top edge)
     el(9,  'shoulder',   { rx: 48,  ry: 22, w: 22, h: 6 },  'L1'),
@@ -61,10 +61,11 @@ function elements() {
     // PS logo button (centre, below touchpad)
     el(5,  'circle',     { cx: 120, cy: 62, r: 3 },          'PS'),
 
-    // D-pad decorative cross sprite (no hit zone)
-    { sprite: 'dpad_cross' },
-
-    // D-pad hit wedges (ids 11–14): triangular wedges over the cross sprite
+    // D-pad: four label-shaped pentagons (flat base outward, apex
+    // pointing toward the centre). Replaces the v1.1.0 cross sprite +
+    // outward-arrow wedges — the user wanted the d-pad to read like
+    // four independent face-button-style targets, with no underlying
+    // cross silhouette competing for attention.
     el(11, 'dpad_wedge', { cx: 59, cy: 57, dir: 'up'    },   'D-up'),
     el(12, 'dpad_wedge', { cx: 59, cy: 57, dir: 'down'  },   'D-down'),
     el(13, 'dpad_wedge', { cx: 59, cy: 57, dir: 'left'  },   'D-left'),
@@ -353,19 +354,26 @@ function mkCircle(ns, cx, cy, r, cls) {
  * @returns {SVGPathElement}
  */
 function mkArrow(ns, cx, cy, dir, cls) {
-  const R         = 9;   // apex reach from d-pad centre
-  const base      = 3;   // base distance from centre (where flat tail sits)
-  const half_w    = 3;   // half-width of the body
-  const shoulder  = 6;   // shoulder distance from centre (where width tapers)
+  // "Label" pentagon: a flat outer base + two parallel sides + a
+  // tapered apex pointing INWARD toward the d-pad centre. Matches the
+  // user's hand sketch in the v1.1.1 review — four tag-shaped buttons
+  // arranged in a + around an empty centre, no underlying cross sprite.
+  //
+  //         ┌──────┐     <- outer base (R_outer from d-pad centre)
+  //         │      │
+  //          \    /      <- shoulders (R_shoulder)
+  //            v         <- apex pointing inward (R_inner)
+  const R_outer    = 13;  // flat base far edge, from d-pad centre
+  const R_shoulder = 6;   // where the parallel sides start tapering in
+  const R_inner    = 2;   // apex tip, closest point to d-pad centre
+  const half_w     = 5;   // half-width of the body
 
-  // Build the 5-point polygon in the canonical "up" orientation, then
-  // rotate the points by mapping (x, y) → (rx, ry) per direction.
   const up = [
-    [-half_w, -base],     // base left
-    [-half_w, -shoulder], // shoulder left
-    [0,      -R],         // apex
-    [+half_w, -shoulder], // shoulder right
-    [+half_w, -base],     // base right
+    [-half_w, -R_outer],     // outer base left
+    [+half_w, -R_outer],     // outer base right
+    [+half_w, -R_shoulder],  // shoulder right
+    [0,       -R_inner],     // apex (toward centre)
+    [-half_w, -R_shoulder],  // shoulder left
   ];
   const map = {
     up:    ([x, y]) => [x,  y],
@@ -404,11 +412,13 @@ function mkQuarter(ns, cx, cy, dir, cls) {
   const r_out = 16;  // outer reach
 
   // SVG angle convention: 0° = +x, 90° = +y (down), so "up" centres
-  // on −90° (i.e., 270°). Each quarter spans 90°, ±45° around its
-  // direction's centre.
+  // on −90° (i.e., 270°). Each quarter spans 84° (±42° around its
+  // direction's centre) instead of a clean 90° — leaves a small gap
+  // between adjacent quarters so the four directions read as
+  // separate buttons even when all four are bound to the same colour.
   const centre = { right: 0, down: 90, left: 180, up: 270 }[dir];
-  const a0 = (centre - 45) * Math.PI / 180;
-  const a1 = (centre + 45) * Math.PI / 180;
+  const a0 = (centre - 42) * Math.PI / 180;
+  const a1 = (centre + 42) * Math.PI / 180;
 
   const o0 = [cx + r_out * Math.cos(a0), cy + r_out * Math.sin(a0)];
   const o1 = [cx + r_out * Math.cos(a1), cy + r_out * Math.sin(a1)];
