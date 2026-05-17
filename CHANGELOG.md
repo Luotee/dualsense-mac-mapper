@@ -3,6 +3,47 @@
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/);
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.0] - 2026-05-17
+
+### Fixed
+
+- **Macro tab actions appeared to do nothing.** `+ New`, `+ Step`,
+  per-row key capture and right-click Delete all relied on the
+  filesystem watcher to emit `config-changed` after a write. On
+  Windows, `notify-rs` loses the watch handle across
+  `write_atomic`'s temp + rename, so the second write onwards was
+  silent and the UI never refreshed. Every IPC mutator
+  (`set_binding`, `set_macro`, `delete_macro`, `rename_macro`,
+  `set_settings`, `reset_settings`) now emits `config-changed`
+  itself on success.
+- **Settings → About read `v0.2.0`** while the binary was at
+  v1.1.4. New `get_app_version` IPC returns
+  `env!("CARGO_PKG_VERSION")`; the About box reads it on init.
+- **Controller status stayed "Connected" forever after a
+  Bluetooth pad silently lost link.** gilrs's
+  `EventType::Disconnected` is not reliable on Windows for BT
+  pads. `GamepadSource::poll` now runs a 500 ms periodic
+  `is_connected()` re-scan and emits the missing transitions.
+
+### Added
+
+- **Keyboard → button focus mirror.** Pressing a key bound to a
+  controller button while the GUI window is focused triggers the
+  same yellow flash on the matching button. Releasing the key
+  clears it. Suppressed while a bind popup / macro step capture
+  is active, and while focus is inside form fields.
+
+### Iron rules
+
+- 10. Any IPC command that mutates `config` must emit
+  `config-changed` itself on success; the filesystem watcher is
+  the second source of truth, not the only one.
+- 11. Controller connection state must be re-checked on a 500 ms
+  periodic poll; do not rely on gilrs's `EventType::Disconnected`
+  alone.
+
+[1.2.0]: https://github.com/Luotee/dualsense-mac-mapper/releases/tag/v1.2.0
+
 ## [1.1.4] - 2026-05-17
 
 ### Fixed

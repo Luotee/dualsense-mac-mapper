@@ -128,6 +128,24 @@ regresses real, observed bugs the codebase already fixed once:
    is the only authorised path from frontend to engine — adding
    business logic to the frontend that bypasses it is a regression
    even if the feature works in isolation.
+10. **Any IPC command that mutates `config` MUST emit
+    `config-changed` itself on success.** The filesystem watcher
+    in `runtime.rs` is the second source of truth, kept around
+    for external edits (Notepad while the GUI is running). It is
+    NOT a reliable refresh path for IPC-driven writes because
+    `notify-rs` on Windows loses the watch handle across the
+    atomic-rename used by `write_atomic` — every IPC mutator
+    after the first would otherwise silently appear to do
+    nothing. See v1.2.0 commits for the bug shape.
+11. **Controller connection state must be re-checked on a
+    periodic poll, not on gilrs `EventType::Disconnected`
+    alone.** Bluetooth pads on Windows can silently lose link
+    without gilrs firing a Disconnected event.
+    `gamepad::GamepadSource::poll` runs a `SCAN_PERIOD_MS`
+    (500 ms) periodic `is_connected()` re-scan and emits the
+    missing `Connected`/`Disconnected` transitions. Removing
+    the periodic re-scan resurrects the "always connected" bug
+    from v1.1.4.
 
 ## Anti-cheat self-discipline
 
