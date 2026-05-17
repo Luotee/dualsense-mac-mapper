@@ -316,10 +316,17 @@ impl HidSource {
         let (tx, rx) = unbounded::<GamepadEvent>();
         let stop = Arc::new(AtomicBool::new(false));
         let stop_for_thread = stop.clone();
-        let (_dummy_tx, dummy_rx) = crossbeam_channel::unbounded::<()>();
+        let (dummy_tx, dummy_rx) = crossbeam_channel::unbounded::<()>();
         thread::Builder::new()
             .name("dualsense-hid-fake".into())
-            .spawn(move || worker_byte_stream(byte_rx, tx, stop_for_thread, params, dummy_rx))
+            // Move dummy_tx into the closure so the disconnect channel's sender
+            // stays alive for the lifetime of the worker thread. Without this,
+            // the sender would be dropped immediately and the closed channel
+            // would be selected on every iteration.
+            .spawn(move || {
+                let _keep_alive = dummy_tx;
+                worker_byte_stream(byte_rx, tx, stop_for_thread, params, dummy_rx)
+            })
             .expect("spawning fake HID worker");
         Self { rx, stop }
     }
@@ -342,7 +349,7 @@ fn worker_real(
     tx: Sender<GamepadEvent>,
     stop: Arc<AtomicBool>,
     params: CursorParams,
-    _disconnect_rx: crossbeam_channel::Receiver<()>, // honored in Task 13; ignored here
+    disconnect_rx: crossbeam_channel::Receiver<()>,
 ) {
     let mut api = match hidapi::HidApi::new() {
         Ok(a) => a,
@@ -370,12 +377,17 @@ fn worker_real(
                 let mut last_state: Option<DsState> = None;
                 let mut touchpad = TouchpadState::default();
                 let outcome = read_loop(
-                    d, &tx, &mut last_state, &mut prev_buttons, &mut touchpad, &params, &stop,
+                    d, &tx, &mut last_state, &mut prev_buttons, &mut touchpad,
+                    &params, &stop, &disconnect_rx,
                 );
                 tracing::info!(?outcome, "read loop exited; back to Searching");
                 let _ = tx.send(GamepadEvent::Disconnected);
             }
             None => {
+                // While Searching with no pad available, still respect
+                // disconnect signal (drain — it's a no-op but consumes the message)
+                // and respect stop.
+                let _ = disconnect_rx.try_recv();
                 thread::sleep(ENUM_RETRY_INTERVAL);
             }
         }
@@ -397,11 +409,16 @@ fn read_loop(
     touchpad: &mut TouchpadState,
     params: &CursorParams,
     stop: &Arc<AtomicBool>,
+    disconnect_rx: &crossbeam_channel::Receiver<()>,
 ) -> &'static str {
     let mut buf = [0u8; REPORT_LEN_BT];
     let mut consecutive_timeouts = 0u32;
     let mut emitted_connected = false;
     while !stop.load(Ordering::SeqCst) {
+        // Manual disconnect check — drop device and return to Searching.
+        if disconnect_rx.try_recv().is_ok() {
+            return "manual-disconnect";
+        }
         match d.read_timeout(&mut buf, READ_TIMEOUT_MS) {
             Ok(0) => {
                 consecutive_timeouts += 1;
@@ -435,28 +452,66 @@ fn worker_byte_stream(
     tx: Sender<GamepadEvent>,
     stop: Arc<AtomicBool>,
     params: CursorParams,
-    _disconnect_rx: crossbeam_channel::Receiver<()>, // honored in Task 13; ignored here
+    disconnect_rx: crossbeam_channel::Receiver<()>,
 ) {
+    use crossbeam_channel::select;
     let mut last_state: Option<DsState> = None;
     let mut prev_buttons = [false; 25];
     let mut touchpad = TouchpadState::default();
     let mut emitted_connected = false;
+    let mut disconnect_alive = true;
+
     while !stop.load(Ordering::SeqCst) {
-        match byte_rx.recv() {
-            Ok(buf) => {
-                if let Some(s) = decode_31(&buf) {
-                    if !emitted_connected {
-                        let _ = tx.send(GamepadEvent::Connected);
-                        emitted_connected = true;
+        if disconnect_alive {
+            select! {
+                recv(disconnect_rx) -> msg => {
+                    if msg.is_err() {
+                        // Sender dropped (e.g. test stub) — channel permanently
+                        // closed; stop multiplexing it.
+                        disconnect_alive = false;
+                        continue;
                     }
-                    diff_emit(last_state.as_ref(), &s, &mut prev_buttons, &tx);
-                    process_touchpad(&mut touchpad, &s, &params, &tx);
-                    last_state = Some(s);
+                    let _ = tx.send(GamepadEvent::Disconnected);
+                    emitted_connected = false;
+                    last_state = None;
+                    touchpad = TouchpadState::default();
+                }
+                recv(byte_rx) -> result => match result {
+                    Ok(buf) => {
+                        if let Some(s) = decode_31(&buf) {
+                            if !emitted_connected {
+                                let _ = tx.send(GamepadEvent::Connected);
+                                emitted_connected = true;
+                            }
+                            diff_emit(last_state.as_ref(), &s, &mut prev_buttons, &tx);
+                            process_touchpad(&mut touchpad, &s, &params, &tx);
+                            last_state = Some(s);
+                        }
+                    }
+                    Err(_) => {
+                        let _ = tx.send(GamepadEvent::Disconnected);
+                        return;
+                    }
                 }
             }
-            Err(_) => {
-                let _ = tx.send(GamepadEvent::Disconnected);
-                return;
+        } else {
+            // disconnect_rx is closed — fall back to plain blocking recv on byte_rx.
+            match byte_rx.recv() {
+                Ok(buf) => {
+                    if let Some(s) = decode_31(&buf) {
+                        if !emitted_connected {
+                            let _ = tx.send(GamepadEvent::Connected);
+                            emitted_connected = true;
+                        }
+                        diff_emit(last_state.as_ref(), &s, &mut prev_buttons, &tx);
+                        process_touchpad(&mut touchpad, &s, &params, &tx);
+                        last_state = Some(s);
+                    }
+                }
+                Err(_) => {
+                    let _ = tx.send(GamepadEvent::Disconnected);
+                    return;
+                }
             }
         }
     }
@@ -653,5 +708,32 @@ mod tests {
         let (dx, dy) = filter_cursor_delta(10, 0, &mut state, &params).unwrap();
         assert_eq!(dx, 8, "mid region 10 * 0.833 = 8.33 → 8");
         assert_eq!(dy, 0);
+    }
+
+    #[test]
+    fn worker_byte_stream_honors_disconnect_signal() {
+        use std::sync::atomic::AtomicBool;
+        use std::time::Duration;
+        let (_byte_tx, byte_rx) = crossbeam_channel::unbounded::<Vec<u8>>();
+        let (evt_tx, evt_rx) = crossbeam_channel::unbounded::<GamepadEvent>();
+        let stop = Arc::new(AtomicBool::new(false));
+        let stop_clone = stop.clone();
+        let (disc_tx, disc_rx) = crossbeam_channel::unbounded::<()>();
+        let params = CursorParams::default();
+        let h = std::thread::spawn(move || {
+            super::worker_byte_stream(byte_rx, evt_tx, stop_clone, params, disc_rx);
+        });
+        // Send disconnect immediately
+        disc_tx.send(()).expect("send disconnect");
+        // Worker should emit Disconnected within 500ms
+        let ev = evt_rx.recv_timeout(Duration::from_millis(500))
+            .expect("worker did not emit Disconnected within 500ms");
+        assert!(matches!(ev, GamepadEvent::Disconnected),
+            "expected Disconnected, got {:?}", ev);
+        // Worker still alive — verify by stopping it now and joining cleanly
+        stop.store(true, std::sync::atomic::Ordering::SeqCst);
+        // Send something to unblock the select! so it observes `stop`
+        disc_tx.send(()).ok();
+        h.join().expect("worker thread should finish cleanly");
     }
 }
