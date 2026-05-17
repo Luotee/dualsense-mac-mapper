@@ -1,4 +1,4 @@
-use crate::config::{Binding, Config};
+use crate::config::{Binding, Config, MouseButton};
 use crate::gamepad::GamepadEvent;
 
 #[derive(Debug, Clone, PartialEq)]
@@ -7,6 +7,9 @@ pub enum KeyAction {
     Release(String),
     MacroStart { name: String, source_id: u32 },
     MacroStop { source_id: u32 },
+    MousePress(MouseButton),
+    MouseRelease(MouseButton),
+    MouseMove { dx: i32, dy: i32 },
 }
 
 pub struct Mapper {
@@ -58,8 +61,7 @@ impl Mapper {
                 self.last_axis[axis as usize] = value;
                 self.update_trigger_virtuals(axis)
             }
-            // Task 6 will route this through MouseSink::move_rel.
-            GamepadEvent::MouseDelta { .. } => Vec::new(),
+            GamepadEvent::MouseDelta { dx, dy } => vec![KeyAction::MouseMove { dx, dy }],
         }
     }
 
@@ -77,6 +79,10 @@ impl Mapper {
                 tracing::info!(id, macro_name = %n, "macro start");
                 vec![KeyAction::MacroStart { name: n.clone(), source_id: id }]
             }
+            Some(Binding::Mouse(b)) => {
+                tracing::info!(id, ?b, "mouse press");
+                vec![KeyAction::MousePress(*b)]
+            }
             _ => {
                 tracing::debug!(id, "physical_down: id has no binding or is unbound");
                 Vec::new()
@@ -93,6 +99,10 @@ impl Mapper {
             Some(Binding::Macro(_)) => {
                 tracing::info!(id, "macro stop");
                 vec![KeyAction::MacroStop { source_id: id }]
+            }
+            Some(Binding::Mouse(b)) => {
+                tracing::info!(id, ?b, "mouse release");
+                vec![KeyAction::MouseRelease(*b)]
             }
             _ => Vec::new(),
         }
@@ -241,6 +251,24 @@ mod tests {
             m.handle(GamepadEvent::Trigger { axis: 4, value: 0.0 }),
             vec![KeyAction::MacroStop { source_id: 23 }]
         );
+    }
+
+    #[test]
+    fn mouse_binding_press_release() {
+        let cfg = cfg_with_overrides(vec![(25, Binding::Mouse(MouseButton::Left))]);
+        let mut m = Mapper::new(cfg);
+        assert_eq!(m.handle(GamepadEvent::ButtonDown(25)),
+                   vec![KeyAction::MousePress(MouseButton::Left)]);
+        assert_eq!(m.handle(GamepadEvent::ButtonUp(25)),
+                   vec![KeyAction::MouseRelease(MouseButton::Left)]);
+    }
+
+    #[test]
+    fn mouse_delta_passes_through_as_move() {
+        let cfg = cfg_with_overrides(vec![]);
+        let mut m = Mapper::new(cfg);
+        assert_eq!(m.handle(GamepadEvent::MouseDelta { dx: 10, dy: -5 }),
+                   vec![KeyAction::MouseMove { dx: 10, dy: -5 }]);
     }
 
     #[test]

@@ -13,6 +13,7 @@ use crate::gamepad::{CursorParams, GamepadSource};
 use crate::keyboard::KeyboardSink;
 use crate::macro_engine::MacroEngine;
 use crate::mapper::{KeyAction, Mapper};
+use crate::mouse::MouseSink;
 use crate::safety::{self, SharedKeyState};
 use anyhow::Result;
 use crossbeam_channel::{unbounded, Receiver, Sender};
@@ -270,6 +271,8 @@ fn run_loop(h: Arc<HandleInner>, mut source: GamepadSource, dry_run: bool) -> Re
 
     let mut sink = KeyboardSink::new(h.key_state.clone(), tick_jitter_ms, min_press_ms, dry_run)
         .expect("KeyboardSink::new failed");
+    let mut mouse_sink = MouseSink::new(h.key_state.clone(), dry_run)
+        .expect("MouseSink::new failed");
 
     // Set up macro → keyboard channel (std::sync::mpsc, matching MacroEngine).
     let (macro_tx, macro_rx) = std::sync::mpsc::channel::<KeyAction>();
@@ -293,9 +296,10 @@ fn run_loop(h: Arc<HandleInner>, mut source: GamepadSource, dry_run: bool) -> Re
             macros.stop_all();
             // Drain macro-emitted releases so sink's refcounts are balanced.
             while let Ok(action) = macro_rx.try_recv() {
-                execute_action(&action, &mut sink, &mut macros, mapper.config(), &h.event_tx);
+                execute_action(&action, &mut sink, &mut mouse_sink, &mut macros, mapper.config(), &h.event_tx);
             }
             sink.release_all_held();
+            mouse_sink.release_all_held();
         }
         last_paused = paused;
 
@@ -355,13 +359,13 @@ fn run_loop(h: Arc<HandleInner>, mut source: GamepadSource, dry_run: bool) -> Re
                     };
                 }
                 for action in &actions {
-                    execute_action(action, &mut sink, &mut macros, mapper.config(), &h.event_tx);
+                    execute_action(action, &mut sink, &mut mouse_sink, &mut macros, mapper.config(), &h.event_tx);
                 }
             }
 
             // ── Drain macro-emitted key actions ──────────────────────────────
             while let Ok(action) = macro_rx.try_recv() {
-                execute_action(&action, &mut sink, &mut macros, mapper.config(), &h.event_tx);
+                execute_action(&action, &mut sink, &mut mouse_sink, &mut macros, mapper.config(), &h.event_tx);
             }
         }
 
@@ -372,17 +376,19 @@ fn run_loop(h: Arc<HandleInner>, mut source: GamepadSource, dry_run: bool) -> Re
     macros.stop_all();
     // Drain any final macro releases.
     while let Ok(action) = macro_rx.try_recv() {
-        execute_action(&action, &mut sink, &mut macros, mapper.config(), &h.event_tx);
+        execute_action(&action, &mut sink, &mut mouse_sink, &mut macros, mapper.config(), &h.event_tx);
     }
     // sink.drop() will call release_all_held() — that is the iron-rule guarantee.
     // We explicitly drop to make the intent clear.
     drop(sink);
+    drop(mouse_sink);
     Ok(())
 }
 
 fn execute_action(
     action: &KeyAction,
     sink: &mut KeyboardSink,
+    mouse_sink: &mut MouseSink,
     macros: &mut MacroEngine,
     cfg: &Config,
     event_tx: &Sender<EngineEvent>,
@@ -425,6 +431,15 @@ fn execute_action(
             macros.stop(*source_id);
             // MacroEnd with completed=false (interrupted by button release).
             // We don't track name per source_id here; emit a best-effort event.
+        }
+        KeyAction::MousePress(b) => {
+            let _ = mouse_sink.click_press(*b);
+        }
+        KeyAction::MouseRelease(b) => {
+            let _ = mouse_sink.click_release(*b);
+        }
+        KeyAction::MouseMove { dx, dy } => {
+            let _ = mouse_sink.move_rel(*dx, *dy);
         }
     }
 }
