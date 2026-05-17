@@ -58,6 +58,63 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   `emergency_release_all` walks both and synthesises
   `Direction::Release` through enigo for each.
 
+### Fixed (post-fix4 polish — 8 user-reported issues)
+
+- **Visual feedback semantics.** Physical gamepad press lights only
+  the mapped button; keyboard press lights all bound buttons.
+  `keyboard_mirror.js` now uses defer-and-check 30 ms: on keydown,
+  the mirror flash is deferred 30 ms and skipped if any `button-down`
+  IPC arrives in that window (engine synth detected). Replaces
+  fix4's racy 250 ms forward suppression that was missing race
+  cases where the synth keydown beat the IPC by < 15 ms.
+- **Touchpad cursor drift on click.** Physical press no longer
+  shifts the cursor. The HID worker now suppresses cursor deltas
+  for the full duration a touchpad button is held (Issue 8
+  "click freeze" layer 1). Mirrors Synaptics PalmCheck-Enhanced /
+  libinput thumb-detection on Clickpads.
+
+### Added (post-fix4)
+
+- **Touchpad continuous hover preview.** Per-frame quadrant emit
+  with dedupe-on-change. New `GamepadEvent::TouchpadHover {
+  raw_x, raw_y, quadrant }` (`quadrant=255` sentinel = "finger
+  lifted"). Frontend live-highlights the active quadrant + draws
+  a persistent debug dot at the raw finger position so users can
+  empirically calibrate `touchpad_midpoint_x/y`.
+- **Touchpad cursor acceleration curve.** libinput-style: slow
+  region (raw |Δ| < 5 px/frame) uses gain × 0.5 for precision,
+  fast (> 20 px/frame) uses × 1.5 for flick, linear interp
+  between. Replaces the v2.1.0-fix4 raw `× sensitivity`
+  mapping. Tunable per-axis in Settings.
+- **Touchpad stationary deadzone.** Rolling 3-frame magnitude
+  window. Sub-radius motion suppressed (anti-jitter). Default
+  radius 2 raw px; range 0..=50 in Settings.
+- **Disconnect button** in the toolbar. Sends a manual
+  `disconnect_gamepad` IPC; the HID worker drops the current
+  device handle and returns to Searching state (thread stays
+  alive). Press any controller button to reconnect.
+- **Rounded outer corners** on D-pad pentagons and stick donut
+  quarters. Subtle (~0.7–0.8 px inset), matching the L1
+  button's `rx="2"` corner feel. Tunable via
+  `tools/controller_tuner.html` → "Corner radius" group.
+- **Key binding chip list** uses 2-column CSS grid layout.
+  29 rows fit the viewport without scroll.
+- **New Settings fields** for cursor filter: `Click freeze`,
+  `Accel slow/fast threshold`, `Accel slow/fast gain`,
+  `Stationary deadzone`. Live-pushed to HID worker atomics
+  via `CursorParams`.
+
+### Config (post-fix4)
+
+- 6 new top-level optional fields (auto-filled on load via
+  `#[serde(default)]` for v2.0.0 / v2.1.0-fix4 configs):
+  - `touchpad_click_freeze_enabled` (bool, default `true`)
+  - `touchpad_accel_slow_threshold` (u32 raw px/frame, default `5`)
+  - `touchpad_accel_fast_threshold` (u32 raw px/frame, default `20`)
+  - `touchpad_accel_gain_slow` (f32, default `0.5`)
+  - `touchpad_accel_gain_fast` (f32, default `1.5`)
+  - `touchpad_deadzone_radius` (u32 raw px, default `2`)
+
 ## [2.0.0] - 2026-05-17
 
 ### Breaking changes
