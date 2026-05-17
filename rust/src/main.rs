@@ -7,6 +7,7 @@
 
 use anyhow::{Context, Result};
 use clap::{ArgAction, Parser};
+use crossbeam_channel;
 use dualsense_mapper::app;
 use dualsense_mapper::config::Config;
 use dualsense_mapper::gamepad::{GamepadEvent, GamepadSource};
@@ -274,7 +275,8 @@ fn list_buttons(cfg: Option<Config>) -> Result<()> {
             .unwrap_or_else(|| "<no label — id not in config>".into())
     };
 
-    let mut source = GamepadSource::new(dualsense_mapper::gamepad::CursorParams::default())?;
+    let (_dummy_disconnect_tx, dummy_disconnect_rx) = crossbeam_channel::bounded::<()>(4);
+    let mut source = GamepadSource::new(dualsense_mapper::gamepad::CursorParams::default(), dummy_disconnect_rx)?;
     println!("Press a button or move a stick. Ctrl-C to quit.");
 
     let shutdown = Arc::new(AtomicBool::new(false));

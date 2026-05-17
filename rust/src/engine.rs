@@ -100,6 +100,10 @@ struct HandleInner {
     /// `set_settings` mutates these through the handle so changes take
     /// effect on the next decoded frame without rebuilding the engine.
     cursor_params: CursorParams,
+    /// Manual disconnect signal — Tauri `disconnect_gamepad` IPC sends
+    /// through this. HID worker honors it to release the hidapi device
+    /// handle and return to Searching state without exiting the thread.
+    disconnect_signal: crossbeam_channel::Sender<()>,
 }
 
 // ─── Handle (GUI-side) ───────────────────────────────────────────────────────
@@ -187,6 +191,14 @@ impl Handle {
             }
         }
     }
+
+    /// Manual disconnect — send a signal to the HID worker to drop its
+    /// current device handle and return to Searching. The thread does
+    /// NOT exit; a new controller (the same or different) reconnects
+    /// via the normal handshake path on next button press.
+    pub fn disconnect_current_device(&self) {
+        let _ = self.inner.disconnect_signal.send(());
+    }
 }
 
 // ─── Engine (owns the thread) ────────────────────────────────────────────────
@@ -205,8 +217,9 @@ impl Engine {
             cfg.touchpad_midpoint_x,
             cfg.touchpad_midpoint_y,
         );
-        let src = GamepadSource::new(cursor_params.clone())?;
-        Self::spawn_inner(cfg, dry_run, src, cursor_params)
+        let (disconnect_tx, disconnect_rx) = crossbeam_channel::bounded::<()>(4);
+        let src = GamepadSource::new(cursor_params.clone(), disconnect_rx)?;
+        Self::spawn_inner(cfg, dry_run, src, cursor_params, disconnect_tx)
     }
 
     /// Spawn with a fake gamepad source. Events are injected via
@@ -222,7 +235,8 @@ impl Engine {
         );
         let (fake_tx, fake_rx) = unbounded::<crate::gamepad::GamepadEvent>();
         let src = GamepadSource::fake(fake_rx);
-        let engine = Self::spawn_inner(cfg, /*dry_run=*/true, src, cursor_params)?;
+        let (disconnect_tx, _disconnect_rx) = crossbeam_channel::bounded::<()>(4);
+        let engine = Self::spawn_inner(cfg, /*dry_run=*/true, src, cursor_params, disconnect_tx)?;
         // Install the sender into HandleInner.
         *engine.handle.inner.fake_tx.lock().unwrap() = Some(fake_tx);
         Ok(engine)
@@ -233,6 +247,7 @@ impl Engine {
         dry_run: bool,
         src: GamepadSource,
         cursor_params: CursorParams,
+        disconnect_tx: crossbeam_channel::Sender<()>,
     ) -> Result<Self> {
         let key_state = safety::shared();
         let (event_tx, event_rx) = unbounded::<EngineEvent>();
@@ -249,6 +264,7 @@ impl Engine {
             fake_tx: Mutex::new(None),
             current_status: RwLock::new(None),
             cursor_params,
+            disconnect_signal: disconnect_tx,
         });
 
         let handle = Handle { inner: inner.clone() };

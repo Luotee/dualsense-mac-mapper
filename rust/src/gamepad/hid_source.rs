@@ -278,13 +278,15 @@ impl HidSource {
     /// `Searching` and emits no events until the first 0x31 frame is
     /// decoded. `params` carries the live touchpad cursor sensitivity
     /// and on/off flag; the engine mutates them through `set_settings`.
-    pub fn new(params: CursorParams) -> Result<Self> {
+    /// `disconnect_rx` receives manual disconnect signals from the GUI
+    /// (Task 13 wires the actual state transition; ignored here with `_` prefix).
+    pub fn new(params: CursorParams, disconnect_rx: crossbeam_channel::Receiver<()>) -> Result<Self> {
         let (tx, rx) = unbounded::<GamepadEvent>();
         let stop = Arc::new(AtomicBool::new(false));
         let stop_for_thread = stop.clone();
         thread::Builder::new()
             .name("dualsense-hid".into())
-            .spawn(move || worker_real(tx, stop_for_thread, params))
+            .spawn(move || worker_real(tx, stop_for_thread, params, disconnect_rx))
             .map_err(|e| anyhow!("spawning HID worker thread: {e}"))?;
         Ok(Self { rx, stop })
     }
@@ -314,9 +316,10 @@ impl HidSource {
         let (tx, rx) = unbounded::<GamepadEvent>();
         let stop = Arc::new(AtomicBool::new(false));
         let stop_for_thread = stop.clone();
+        let (_dummy_tx, dummy_rx) = crossbeam_channel::unbounded::<()>();
         thread::Builder::new()
             .name("dualsense-hid-fake".into())
-            .spawn(move || worker_byte_stream(byte_rx, tx, stop_for_thread, params))
+            .spawn(move || worker_byte_stream(byte_rx, tx, stop_for_thread, params, dummy_rx))
             .expect("spawning fake HID worker");
         Self { rx, stop }
     }
@@ -335,7 +338,12 @@ impl Drop for HidSource {
     }
 }
 
-fn worker_real(tx: Sender<GamepadEvent>, stop: Arc<AtomicBool>, params: CursorParams) {
+fn worker_real(
+    tx: Sender<GamepadEvent>,
+    stop: Arc<AtomicBool>,
+    params: CursorParams,
+    _disconnect_rx: crossbeam_channel::Receiver<()>, // honored in Task 13; ignored here
+) {
     let mut api = match hidapi::HidApi::new() {
         Ok(a) => a,
         Err(e) => {
@@ -427,6 +435,7 @@ fn worker_byte_stream(
     tx: Sender<GamepadEvent>,
     stop: Arc<AtomicBool>,
     params: CursorParams,
+    _disconnect_rx: crossbeam_channel::Receiver<()>, // honored in Task 13; ignored here
 ) {
     let mut last_state: Option<DsState> = None;
     let mut prev_buttons = [false; 25];
