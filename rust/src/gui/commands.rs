@@ -255,12 +255,30 @@ pub struct Settings {
     pub touchpad_midpoint_x: u16,
     #[serde(default = "default_touchpad_midpoint_y")]
     pub touchpad_midpoint_y: u16,
+    #[serde(default = "default_touchpad_accel_slow_threshold")]
+    pub touchpad_accel_slow_threshold: u32,
+    #[serde(default = "default_touchpad_accel_fast_threshold")]
+    pub touchpad_accel_fast_threshold: u32,
+    #[serde(default = "default_touchpad_accel_gain_slow")]
+    pub touchpad_accel_gain_slow: f32,
+    #[serde(default = "default_touchpad_accel_gain_fast")]
+    pub touchpad_accel_gain_fast: f32,
+    #[serde(default = "default_touchpad_deadzone_radius")]
+    pub touchpad_deadzone_radius: u32,
+    #[serde(default = "default_touchpad_click_freeze_enabled")]
+    pub touchpad_click_freeze_enabled: bool,
 }
 
 fn default_touchpad_cursor_enabled() -> bool { true }
 fn default_touchpad_cursor_sensitivity() -> f32 { 1.5 }
 fn default_touchpad_midpoint_x() -> u16 { 960 }
 fn default_touchpad_midpoint_y() -> u16 { 540 }
+fn default_touchpad_accel_slow_threshold() -> u32 { 5 }
+fn default_touchpad_accel_fast_threshold() -> u32 { 20 }
+fn default_touchpad_accel_gain_slow() -> f32 { 0.5 }
+fn default_touchpad_accel_gain_fast() -> f32 { 1.5 }
+fn default_touchpad_deadzone_radius() -> u32 { 2 }
+fn default_touchpad_click_freeze_enabled() -> bool { true }
 
 impl Settings {
     /// Spec §9 — the factory defaults that ship with the example config.
@@ -275,6 +293,12 @@ impl Settings {
             touchpad_cursor_sensitivity: 1.5,
             touchpad_midpoint_x: 960,
             touchpad_midpoint_y: 540,
+            touchpad_accel_slow_threshold: 5,
+            touchpad_accel_fast_threshold: 20,
+            touchpad_accel_gain_slow: 0.5,
+            touchpad_accel_gain_fast: 1.5,
+            touchpad_deadzone_radius: 2,
+            touchpad_click_freeze_enabled: true,
         }
     }
 }
@@ -310,6 +334,12 @@ pub fn set_settings_impl(
     doc.set_touchpad_cursor_sensitivity(s.touchpad_cursor_sensitivity);
     doc.set_touchpad_midpoint_x(s.touchpad_midpoint_x);
     doc.set_touchpad_midpoint_y(s.touchpad_midpoint_y);
+    doc.set_touchpad_accel_slow_threshold(s.touchpad_accel_slow_threshold);
+    doc.set_touchpad_accel_fast_threshold(s.touchpad_accel_fast_threshold);
+    doc.set_touchpad_accel_gain_slow(s.touchpad_accel_gain_slow);
+    doc.set_touchpad_accel_gain_fast(s.touchpad_accel_gain_fast);
+    doc.set_touchpad_deadzone_radius(s.touchpad_deadzone_radius);
+    doc.set_touchpad_click_freeze_enabled(s.touchpad_click_freeze_enabled);
     doc.validate()?;
     write_atomic(config_path, &doc)?;
     let mut live = engine.config_write();
@@ -322,6 +352,12 @@ pub fn set_settings_impl(
     live.touchpad_cursor_sensitivity = s.touchpad_cursor_sensitivity;
     live.touchpad_midpoint_x = s.touchpad_midpoint_x;
     live.touchpad_midpoint_y = s.touchpad_midpoint_y;
+    live.touchpad_accel_slow_threshold = s.touchpad_accel_slow_threshold;
+    live.touchpad_accel_fast_threshold = s.touchpad_accel_fast_threshold;
+    live.touchpad_accel_gain_slow = s.touchpad_accel_gain_slow;
+    live.touchpad_accel_gain_fast = s.touchpad_accel_gain_fast;
+    live.touchpad_deadzone_radius = s.touchpad_deadzone_radius;
+    live.touchpad_click_freeze_enabled = s.touchpad_click_freeze_enabled;
     drop(live);
     // Update the HID worker's atomics so cursor / quadrant changes take
     // effect on the next decoded frame without an engine restart.
@@ -330,6 +366,12 @@ pub fn set_settings_impl(
     params.set_sensitivity(s.touchpad_cursor_sensitivity);
     params.set_midpoint_x(s.touchpad_midpoint_x);
     params.set_midpoint_y(s.touchpad_midpoint_y);
+    params.set_accel_slow_threshold(s.touchpad_accel_slow_threshold);
+    params.set_accel_fast_threshold(s.touchpad_accel_fast_threshold);
+    params.set_accel_gain_slow(s.touchpad_accel_gain_slow);
+    params.set_accel_gain_fast(s.touchpad_accel_gain_fast);
+    params.set_deadzone_radius(s.touchpad_deadzone_radius);
+    params.set_click_freeze_enabled(s.touchpad_click_freeze_enabled);
     Ok(())
 }
 

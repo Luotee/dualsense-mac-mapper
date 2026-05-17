@@ -81,6 +81,36 @@ impl ConfigDoc {
         self.raw["touchpad_midpoint_y"] = Value::from(v);
     }
 
+    pub fn set_touchpad_accel_slow_threshold(&mut self, v: u32) {
+        self.typed.touchpad_accel_slow_threshold = v;
+        self.raw["touchpad_accel_slow_threshold"] = Value::from(v);
+    }
+
+    pub fn set_touchpad_accel_fast_threshold(&mut self, v: u32) {
+        self.typed.touchpad_accel_fast_threshold = v;
+        self.raw["touchpad_accel_fast_threshold"] = Value::from(v);
+    }
+
+    pub fn set_touchpad_accel_gain_slow(&mut self, v: f32) {
+        self.typed.touchpad_accel_gain_slow = v;
+        self.raw["touchpad_accel_gain_slow"] = Value::from(v);
+    }
+
+    pub fn set_touchpad_accel_gain_fast(&mut self, v: f32) {
+        self.typed.touchpad_accel_gain_fast = v;
+        self.raw["touchpad_accel_gain_fast"] = Value::from(v);
+    }
+
+    pub fn set_touchpad_deadzone_radius(&mut self, v: u32) {
+        self.typed.touchpad_deadzone_radius = v;
+        self.raw["touchpad_deadzone_radius"] = Value::from(v);
+    }
+
+    pub fn set_touchpad_click_freeze_enabled(&mut self, v: bool) {
+        self.typed.touchpad_click_freeze_enabled = v;
+        self.raw["touchpad_click_freeze_enabled"] = Value::from(v);
+    }
+
     /// Set min_press_ms without running validation.
     /// Callers that need the invariant enforced must call `validate()` afterwards.
     pub fn set_min_press_ms_unchecked(&mut self, v: [u32; 2]) {

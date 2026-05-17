@@ -21,6 +21,7 @@ fn set_settings_persists_and_rejects_invalid_ranges() {
         touchpad_cursor_sensitivity: 1.5,
         touchpad_midpoint_x: 960,
         touchpad_midpoint_y: 540,
+        ..Settings::defaults()
     }).unwrap_err();
     assert!(format!("{err:#}").to_lowercase().contains("min_press_ms"),
             "error should name the bad field; got: {err:#}");
@@ -36,6 +37,7 @@ fn set_settings_persists_and_rejects_invalid_ranges() {
         touchpad_cursor_sensitivity: 1.5,
         touchpad_midpoint_x: 960,
         touchpad_midpoint_y: 540,
+        ..Settings::defaults()
     }).unwrap();
 
     let live = handle.config_read();
@@ -61,6 +63,7 @@ fn set_settings_pushes_touchpad_cursor_to_hid_atomics() {
         touchpad_cursor_sensitivity: 3.25,
         touchpad_midpoint_x: 850,
         touchpad_midpoint_y: 480,
+        ..Settings::defaults()
     }).unwrap();
 
     let params = handle.cursor_params();
@@ -89,6 +92,7 @@ fn set_settings_rejects_sensitivity_out_of_range() {
         touchpad_cursor_sensitivity: 99.0,
         touchpad_midpoint_x: 960,
         touchpad_midpoint_y: 540,
+        ..Settings::defaults()
     }).unwrap_err();
     assert!(format!("{err:#}").contains("touchpad_cursor_sensitivity"),
         "expected the bad field name in the error; got: {err:#}");
