@@ -33,6 +33,14 @@ pub struct DsState {
     /// Bit-vector of buttons indexed 0..=24. Same ids as v1.x
     /// `gamepad::button_index`, so existing config files migrate as-is.
     pub buttons: [bool; 25],
+    /// Touchpad finger 0: true when a finger is currently in contact.
+    pub finger0_active: bool,
+    /// Touchpad x in 0..=1919.
+    pub finger0_x: u16,
+    /// Touchpad y in 0..=1079.
+    pub finger0_y: u16,
+    /// Whole-touchpad physical click switch.
+    pub touchpad_btn: bool,
 }
 
 /// Decode a 78-byte BT 0x31 report. Returns None on short buffer or
@@ -74,6 +82,23 @@ pub fn decode_31(buf: &[u8]) -> Option<DsState> {
     s.buttons[13] = left;
     s.buttons[14] = right;
 
+    // Touchpad whole-pad click switch — buttons[2] bit 1.
+    s.touchpad_btn = (b2 >> 1) & 1 == 1;
+
+    // Touchpad finger 0 — bytes 33..=36.
+    //   byte 33: high bit = "no contact" flag; low 7 bits = touch id
+    //   byte 34: x[7..0]
+    //   byte 35: low nibble = x[11..8], high nibble = y[3..0]
+    //   byte 36: y[11..4]
+    let f0 = &buf[33..=36];
+    s.finger0_active = (f0[0] & 0x80) == 0;
+    let x_lo = f0[1] as u16;
+    let x_hi = (f0[2] & 0x0F) as u16;
+    let y_lo = ((f0[2] & 0xF0) >> 4) as u16;
+    let y_hi = f0[3] as u16;
+    s.finger0_x = x_lo | (x_hi << 8);
+    s.finger0_y = y_lo | (y_hi << 4);
+
     Some(s)
 }
 
@@ -108,6 +133,8 @@ mod tests {
         buf[4] = 128;
         buf[5] = 128;
         buf[9] = 0x08; // hat = released, no buttons in byte 9 upper nibble
+        buf[33] = 0x80; // touchpad finger 0 inactive (high bit = "no contact")
+        buf[37] = 0x80; // touchpad finger 1 inactive (decoded but ignored in v2.1)
         buf
     }
 
@@ -176,6 +203,37 @@ mod tests {
         buf[3] = 0;  // hardware "up"
         let s = decode_31(&buf).unwrap();
         assert!((s.stick_ly - 1.0).abs() < 1e-6, "got {}", s.stick_ly);
+    }
+
+    #[test]
+    fn decode_touchpad_finger0_inactive_by_default() {
+        let buf = neutral_report();
+        let s = decode_31(&buf).unwrap();
+        assert!(!s.finger0_active, "neutral report should have no finger contact");
+    }
+
+    #[test]
+    fn decode_touchpad_finger0_active_position() {
+        let mut buf = neutral_report();
+        // active=1 (high bit clear), id=0
+        buf[33] = 0x00;
+        // x = 1500 = 0x5DC → x_low_8 = 0xDC, x_high_4 = 0x5
+        // y = 800  = 0x320 → y_low_4 = 0x0, y_high_8 = 0x32
+        buf[34] = 0xDC;
+        buf[35] = 0x05 | (0x0 << 4);
+        buf[36] = 0x32;
+        let s = decode_31(&buf).unwrap();
+        assert!(s.finger0_active);
+        assert_eq!(s.finger0_x, 1500);
+        assert_eq!(s.finger0_y, 800);
+    }
+
+    #[test]
+    fn decode_touchpad_click_button() {
+        let mut buf = neutral_report();
+        buf[11] |= 1 << 1;
+        let s = decode_31(&buf).unwrap();
+        assert!(s.touchpad_btn);
     }
 
     #[test]
