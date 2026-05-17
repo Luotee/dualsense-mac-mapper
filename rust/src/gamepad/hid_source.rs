@@ -18,7 +18,7 @@ use crossbeam_channel::{unbounded, Receiver, Sender};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::thread;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 /// Per-frame raw-coordinate delta upper bound. A real finger at 250 Hz
 /// frame rate over the 1920-wide pad cannot move more than ~150 raw px
@@ -38,6 +38,23 @@ const QUAD_BR: u32 = 28;
 /// Sentinel value emitted in `GamepadEvent::TouchpadHover.quadrant`
 /// when the finger lifts. Out of band — valid quadrant ids are 25..=28.
 const HOVER_QUADRANT_NONE: u32 = 255;
+
+/// Bug 1: time window after click rising edge during which cursor
+/// delta is suppressed to mask finger-press lateral roll. Matches
+/// libinput tap timeout order of magnitude (~100ms). Tuned conservatively
+/// short so press-and-drag becomes responsive after the press settles.
+const CLICK_FREEZE_MS: u64 = 80;
+/// Bug 1: cumulative raw-pixel motion threshold from click anchor.
+/// If finger moves > this from anchor during the freeze window, user
+/// intent is dragging — exit freeze and let cursor follow. 15 raw px
+/// ≈ 1% of touchpad width, well above press-roll drift (5-10 px).
+const CLICK_DRAG_EXIT_PX: u32 = 15;
+/// Bug 2: rolling position buffer depth (frames). 4ms/frame × 10 = 40ms,
+/// enough to reach back to a stable pre-press position (~30ms target).
+const POS_BUFFER_DEPTH: usize = 10;
+/// Bug 2: target lookback for click quadrant pos — pick the buffer entry
+/// closest to (now - this) when the click rising edge fires.
+const CLICK_POS_LOOKBACK_MS: u64 = 30;
 
 /// Per-worker touchpad tracking. Reset on each new device connect.
 #[derive(Default)]
@@ -65,6 +82,17 @@ struct TouchpadState {
     /// any quadrant — i.e., finger lifted). Used to dedupe per-frame
     /// hover emits so only quadrant CHANGES produce events.
     last_hover_quadrant: Option<u32>,
+    /// Time the touchpad button transitioned false→true (Bug 1: click drift).
+    /// `None` = button currently up. Set on rising edge.
+    click_btn_down_at: Option<Instant>,
+    /// Finger position captured at click rising edge (Bug 1).
+    /// Cumulative motion from this anchor gates the L1 freeze early-exit.
+    click_anchor_pos: Option<(u16, u16)>,
+    /// Rolling buffer of recent (x, y, timestamp) for stable pre-press
+    /// position lookup. Bug 2: click quadrant uses entry from ~30ms ago,
+    /// not the live finger position (which has press-drift) and not
+    /// `touchdown_pos` (which is stale across multi-click drag sessions).
+    pos_buffer: std::collections::VecDeque<(u16, u16, Instant)>,
 }
 
 fn quadrant_for(x: u16, y: u16, mid_x: u16, mid_y: u16) -> u32 {
@@ -123,9 +151,33 @@ pub(crate) fn filter_cursor_delta(
     state: &mut TouchpadState,
     params: &CursorParams,
 ) -> Option<(i32, i32)> {
-    // L1: click freeze
-    if state.click_btn_held && params.click_freeze_enabled() {
-        return None;
+    // L1: motion-gated click freeze. Mask press-roll lateral drift in
+    // the first CLICK_FREEZE_MS window OR until cumulative motion from
+    // the click anchor exceeds CLICK_DRAG_EXIT_PX (drag detected).
+    // After either gate exits, cursor follows finger normally so
+    // press-and-drag works.
+    if state.click_btn_held
+        && params.click_freeze_enabled()
+        && state.click_btn_down_at.is_some()
+        && state.click_anchor_pos.is_some()
+    {
+        let down_at = state.click_btn_down_at.unwrap();
+        let (anchor_x, anchor_y) = state.click_anchor_pos.unwrap();
+        let elapsed_ms = down_at.elapsed().as_millis() as u64;
+        // Cumulative motion from anchor — computed via the pos_buffer's
+        // latest entry (updated BEFORE filter_cursor_delta is called).
+        let cur_pos = state.pos_buffer.back().map(|(x, y, _)| (*x, *y));
+        let cum_mag_sq = if let Some((cx, cy)) = cur_pos {
+            let ddx = (cx as i32) - (anchor_x as i32);
+            let ddy = (cy as i32) - (anchor_y as i32);
+            (ddx * ddx + ddy * ddy) as u32
+        } else {
+            0
+        };
+        let exit_sq = CLICK_DRAG_EXIT_PX * CLICK_DRAG_EXIT_PX;
+        if elapsed_ms < CLICK_FREEZE_MS && cum_mag_sq < exit_sq {
+            return None;
+        }
     }
     // L2: stationary deadzone — rolling 3-frame magnitude window
     let mag_sq = (raw_dx * raw_dx + raw_dy * raw_dy) as u32;
@@ -157,6 +209,40 @@ pub(crate) fn filter_cursor_delta(
     Some(((raw_dx as f32 * total) as i32, (raw_dy as f32 * total) as i32))
 }
 
+/// Push current finger position into the rolling buffer; pop the oldest
+/// entry if at depth. Called every frame in `process_touchpad`.
+fn record_finger_pos(state: &mut TouchpadState, x: u16, y: u16, now: Instant) {
+    state.pos_buffer.push_back((x, y, now));
+    if state.pos_buffer.len() > POS_BUFFER_DEPTH {
+        state.pos_buffer.pop_front();
+    }
+}
+
+/// Look up the buffered position closest to `target = now - lookback`.
+/// Returns the entry whose timestamp is nearest the target. Falls back
+/// to the oldest available entry if the buffer is shorter than lookback.
+fn stable_pos_for_click(
+    state: &TouchpadState,
+    now: Instant,
+    lookback: Duration,
+) -> Option<(u16, u16)> {
+    let target = now.checked_sub(lookback)?;
+    let mut best: Option<&(u16, u16, Instant)> = None;
+    let mut best_diff_ms = u128::MAX;
+    for entry in state.pos_buffer.iter() {
+        let diff_ms = if entry.2 > target {
+            (entry.2 - target).as_millis()
+        } else {
+            (target - entry.2).as_millis()
+        };
+        if diff_ms < best_diff_ms {
+            best_diff_ms = diff_ms;
+            best = Some(entry);
+        }
+    }
+    best.map(|(x, y, _)| (*x, *y))
+}
+
 /// Cursor delta + touchpad click → 4-quadrant button events. Mutates
 /// `state` across frames. Called per decoded `DsState`.
 fn process_touchpad(
@@ -165,6 +251,15 @@ fn process_touchpad(
     params: &CursorParams,
     tx: &Sender<GamepadEvent>,
 ) {
+    let now = Instant::now();
+    // Update rolling position buffer before any filter/click logic so
+    // filter_cursor_delta and stable_pos_for_click see the latest data.
+    if cur.finger0_active {
+        record_finger_pos(state, cur.finger0_x, cur.finger0_y, now);
+    } else {
+        state.pos_buffer.clear();
+    }
+
     // Click button state for L1 freeze — set every frame so the filter
     // sees the current button state, not the previous frame's.
     state.click_btn_held = cur.touchpad_btn;
@@ -220,12 +315,28 @@ fn process_touchpad(
         |ev| { let _ = tx.send(ev); },
     );
 
-    // Click: rising edge captures the quadrant using the touch-down
-    // position (the user's intent), not the click-frame instantaneous
-    // position. Falling edge releases the same id (so a drag across
-    // quadrant boundaries does not re-emit).
+    // Click: rising edge captures the quadrant using a stable pre-press
+    // position (~30ms ago) to avoid press-drift and stale touchdown_pos.
+    // Falling edge releases the same id (so a drag across quadrant
+    // boundaries does not re-emit).
     if cur.touchpad_btn && !state.prev_touchpad_btn {
-        let click_pos = state.touchdown_pos
+        // Bug 1: record press timestamp + anchor for the motion-gate freeze.
+        state.click_btn_down_at = Some(now);
+        state.click_anchor_pos = if cur.finger0_active {
+            Some((cur.finger0_x, cur.finger0_y))
+        } else {
+            None
+        };
+        // Bug 2: click quadrant uses stable position from ~30ms ago,
+        // NOT touchdown_pos (which is stale across multi-click drags).
+        let stable = stable_pos_for_click(
+            state,
+            now,
+            Duration::from_millis(CLICK_POS_LOOKBACK_MS),
+        );
+        let click_pos = stable
+            .or(state.click_anchor_pos)
+            .or(state.touchdown_pos)
             .or_else(|| if cur.finger0_active {
                 Some((cur.finger0_x, cur.finger0_y))
             } else {
@@ -241,12 +352,15 @@ fn process_touchpad(
             mid_x,
             mid_y,
             quadrant = q,
-            "touchpad click captured"
+            "touchpad click captured (stable pre-press)"
         );
         state.last_click_quadrant = Some(q);
         let _ = tx.send(GamepadEvent::TouchpadClick { raw_x, raw_y, quadrant: q });
         let _ = tx.send(GamepadEvent::ButtonDown(q));
     } else if !cur.touchpad_btn && state.prev_touchpad_btn {
+        // Click falling edge — clear freeze state.
+        state.click_btn_down_at = None;
+        state.click_anchor_pos = None;
         if let Some(q) = state.last_click_quadrant.take() {
             let _ = tx.send(GamepadEvent::ButtonUp(q));
         }
@@ -636,22 +750,56 @@ mod tests {
     }
 
     #[test]
-    fn filter_cursor_delta_click_freeze_suppresses() {
+    fn filter_cursor_delta_click_freeze_within_window_suppresses() {
         let mut state = TouchpadState::default();
         state.click_btn_held = true;
-        let params = CursorParams::default();  // click_freeze_enabled = true by default
-        let result = filter_cursor_delta(10, 10, &mut state, &params);
-        assert_eq!(result, None, "expected None during click freeze, got {:?}", result);
+        state.click_btn_down_at = Some(Instant::now());
+        state.click_anchor_pos = Some((500, 500));
+        state.pos_buffer.push_back((501, 501, Instant::now()));  // 1px from anchor
+        let params = CursorParams::default();
+        let result = filter_cursor_delta(2, 2, &mut state, &params);
+        assert_eq!(result, None, "within 80ms + < 15px → freeze");
+    }
+
+    #[test]
+    fn filter_cursor_delta_click_freeze_exits_after_window() {
+        let mut state = TouchpadState::default();
+        state.click_btn_held = true;
+        state.click_btn_down_at = Some(Instant::now() - Duration::from_millis(100));
+        state.click_anchor_pos = Some((500, 500));
+        state.pos_buffer.push_back((501, 501, Instant::now()));
+        let params = CursorParams::default();
+        params.set_deadzone_radius(0);  // bypass L2
+        let result = filter_cursor_delta(5, 5, &mut state, &params);
+        assert!(result.is_some(), "after 80ms window → unfreeze (drag enabled)");
+    }
+
+    #[test]
+    fn filter_cursor_delta_click_freeze_exits_on_drag() {
+        let mut state = TouchpadState::default();
+        state.click_btn_held = true;
+        state.click_btn_down_at = Some(Instant::now());
+        state.click_anchor_pos = Some((500, 500));
+        // Cumulative motion 20 px > CLICK_DRAG_EXIT_PX (15) → exit freeze
+        state.pos_buffer.push_back((520, 500, Instant::now()));
+        let params = CursorParams::default();
+        params.set_deadzone_radius(0);
+        let result = filter_cursor_delta(5, 0, &mut state, &params);
+        assert!(result.is_some(), "cumulative > 15px → drag detected, unfreeze");
     }
 
     #[test]
     fn filter_cursor_delta_no_freeze_when_disabled() {
         let mut state = TouchpadState::default();
         state.click_btn_held = true;
+        state.click_btn_down_at = Some(Instant::now());
+        state.click_anchor_pos = Some((500, 500));
+        state.pos_buffer.push_back((500, 500, Instant::now()));
         let params = CursorParams::default();
         params.set_click_freeze_enabled(false);
+        params.set_deadzone_radius(0);
         let result = filter_cursor_delta(10, 10, &mut state, &params);
-        assert!(result.is_some(), "expected Some delta when freeze disabled");
+        assert!(result.is_some(), "click_freeze_enabled=false → pass through");
     }
 
     #[test]
@@ -735,5 +883,21 @@ mod tests {
         // Send something to unblock the select! so it observes `stop`
         disc_tx.send(()).ok();
         h.join().expect("worker thread should finish cleanly");
+    }
+
+    #[test]
+    fn stable_pos_picks_closest_to_lookback_target() {
+        let mut state = TouchpadState::default();
+        let t0 = Instant::now();
+        // Push positions at t0, t0+10ms, t0+25ms, t0+40ms, t0+60ms
+        state.pos_buffer.push_back((100, 100, t0));
+        state.pos_buffer.push_back((110, 100, t0 + Duration::from_millis(10)));
+        state.pos_buffer.push_back((130, 100, t0 + Duration::from_millis(25)));
+        state.pos_buffer.push_back((160, 100, t0 + Duration::from_millis(40)));
+        state.pos_buffer.push_back((200, 100, t0 + Duration::from_millis(60)));
+        // Lookback 30ms from t0+60ms → target t0+30ms → closest entry t0+25ms = (130, 100)
+        let now = t0 + Duration::from_millis(60);
+        let stable = stable_pos_for_click(&state, now, Duration::from_millis(30));
+        assert_eq!(stable, Some((130, 100)));
     }
 }
