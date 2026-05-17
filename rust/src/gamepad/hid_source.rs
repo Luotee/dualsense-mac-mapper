@@ -130,7 +130,18 @@ pub(crate) fn filter_cursor_delta(
     if state.click_btn_held && params.click_freeze_enabled() {
         return None;
     }
-    // L2 + L3 not yet implemented — fall through with sensitivity only.
+    // L2: stationary deadzone — rolling 3-frame magnitude window
+    let mag_sq = (raw_dx * raw_dx + raw_dy * raw_dy) as u32;
+    state.recent_mag_sq.push_back(mag_sq);
+    if state.recent_mag_sq.len() > 3 {
+        state.recent_mag_sq.pop_front();
+    }
+    let dz = params.deadzone_radius();
+    let dz_sq = (dz * dz) as u32;
+    if state.recent_mag_sq.iter().all(|m| *m < dz_sq) {
+        return None;
+    }
+    // L3: acceleration curve added in Task 10. Fall-through with sensitivity only.
     let sens = params.sensitivity();
     Some(((raw_dx as f32 * sens) as i32, (raw_dy as f32 * sens) as i32))
 }
@@ -566,5 +577,24 @@ mod tests {
         params.set_click_freeze_enabled(false);
         let result = filter_cursor_delta(10, 10, &mut state, &params);
         assert!(result.is_some(), "expected Some delta when freeze disabled");
+    }
+
+    #[test]
+    fn filter_deadzone_3_frames_below_radius_suppresses() {
+        let mut state = TouchpadState::default();
+        let params = CursorParams::default();  // deadzone_radius = 2
+        // 3 consecutive frames at dx=1, dy=1 → mag² = 2 < 4 → all suppressed.
+        assert_eq!(filter_cursor_delta(1, 1, &mut state, &params), None);
+        assert_eq!(filter_cursor_delta(1, 1, &mut state, &params), None);
+        assert_eq!(filter_cursor_delta(1, 1, &mut state, &params), None);
+    }
+
+    #[test]
+    fn filter_deadzone_one_frame_above_radius_passes() {
+        let mut state = TouchpadState::default();
+        let params = CursorParams::default();
+        assert_eq!(filter_cursor_delta(1, 1, &mut state, &params), None);
+        let result = filter_cursor_delta(5, 5, &mut state, &params);
+        assert!(result.is_some(), "5,5 above deadzone radius 2 should pass; got None");
     }
 }
