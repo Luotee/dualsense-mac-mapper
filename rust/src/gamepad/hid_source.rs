@@ -91,7 +91,7 @@ impl Drop for HidSource {
 }
 
 fn worker_real(tx: Sender<GamepadEvent>, stop: Arc<AtomicBool>) {
-    let api = match hidapi::HidApi::new() {
+    let mut api = match hidapi::HidApi::new() {
         Ok(a) => a,
         Err(e) => {
             tracing::error!(error = %e, "hidapi init failed");
@@ -99,6 +99,12 @@ fn worker_real(tx: Sender<GamepadEvent>, stop: Arc<AtomicBool>) {
         }
     };
     while !stop.load(Ordering::SeqCst) {
+        // device_list() returns a cached snapshot — must refresh
+        // explicitly each iteration or a pad turned on after app
+        // startup is invisible forever.
+        if let Err(e) = api.refresh_devices() {
+            tracing::warn!(error = %e, "hidapi refresh_devices failed");
+        }
         let device = api
             .device_list()
             .find(|info| info.vendor_id() == DS_VID && info.product_id() == DS_PID)
