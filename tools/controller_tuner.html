@@ -1,0 +1,580 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Controller geometry tuner (full)</title>
+<style>
+  :root {
+    --bg:        #282828; --card: #3c3836; --border: #665c54;
+    --text:      #ebdbb2; --text-strong: #fbf1c7; --muted: #a89984;
+    --accent:    #83a598; --macro: #fe8019; --success: #b8bb26;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; padding: 16px;
+    background: var(--bg); color: var(--text);
+    font-family: 'Segoe UI', sans-serif; font-size: 13px;
+  }
+  h1 { color: var(--text-strong); font-size: 16px; margin: 0 0 4px; }
+  p.sub { color: var(--muted); margin: 0 0 14px; }
+  .layout {
+    display: grid;
+    grid-template-columns: 1fr 380px;
+    gap: 16px;
+    align-items: start;
+  }
+  .pad-frame {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 14px;
+    position: sticky;
+    top: 16px;
+  }
+  svg.controller { width: 100%; height: auto; display: block; }
+  .body       { fill: var(--card); stroke: var(--border); stroke-width: 1.4; }
+  .touchpad   { fill: var(--bg);   stroke: var(--border); stroke-width: 1; }
+  .stick-ring { fill: var(--bg);   stroke: var(--border); stroke-width: 1.4; }
+  .meta-rect  { fill: var(--bg);   stroke: var(--muted); stroke-opacity: 0.6; }
+  .hit        { stroke: var(--border); stroke-width: 1; }
+  .binding-key   { fill: var(--accent); fill-opacity: 0.85; stroke: var(--accent); }
+  .binding-macro { fill: var(--macro);  fill-opacity: 0.85; stroke: var(--macro);  }
+  .binding-unbound {
+    fill: transparent;
+    stroke: var(--muted); stroke-dasharray: 1.5 1.5; stroke-width: 0.5;
+  }
+  .wedge       { fill-opacity: 0.4; stroke-width: 0.6; }
+  .wedge.binding-key   { stroke: var(--accent); }
+  .wedge.binding-macro { stroke: var(--macro); }
+  .wedge.binding-unbound {
+    fill-opacity: 0;
+    stroke: var(--muted); stroke-dasharray: 1.5 1.5; stroke-width: 0.5;
+  }
+
+  .controls {
+    display: flex; flex-direction: column; gap: 8px;
+  }
+  details {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 0;
+  }
+  details summary {
+    cursor: pointer;
+    padding: 10px 14px;
+    color: var(--text-strong);
+    font-weight: 600;
+    font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    user-select: none;
+    list-style: none;
+    position: relative;
+  }
+  details summary::after {
+    content: '▾';
+    position: absolute; right: 14px; top: 10px;
+    color: var(--muted);
+    transition: transform 120ms;
+  }
+  details[open] summary::after { transform: rotate(180deg); }
+  details .body-rows { padding: 0 14px 12px; }
+  .row {
+    display: grid; grid-template-columns: 92px 1fr 56px;
+    align-items: center; gap: 8px; margin: 6px 0;
+  }
+  .row label  { font-size: 12px; color: var(--text); }
+  .row input[type=range] { width: 100%; }
+  .row input[type=number] {
+    background: var(--bg); color: var(--text-strong);
+    border: 1px solid var(--border); border-radius: 3px;
+    padding: 2px 4px; font-size: 11px; width: 100%;
+    font-family: ui-monospace, Consolas, monospace;
+  }
+  .derived {
+    font-family: ui-monospace, Consolas, monospace;
+    font-size: 11px; color: var(--muted); margin-top: 6px;
+    line-height: 1.5;
+  }
+  .seg {
+    display: flex; border: 1px solid var(--border); border-radius: 4px;
+    overflow: hidden; margin-bottom: 0;
+  }
+  .seg-item {
+    flex: 1; padding: 6px; border: none; background: transparent;
+    color: var(--muted); cursor: pointer; font-size: 11px;
+    border-right: 1px solid var(--border);
+  }
+  .seg-item:last-child { border-right: none; }
+  .seg-item.on { background: rgba(131,165,152,0.18); color: var(--accent); }
+
+  .toolbar {
+    display: flex; gap: 6px; margin-bottom: 8px; flex-wrap: wrap;
+  }
+  .toolbar button {
+    background: var(--bg);
+    border: 1px solid var(--border);
+    color: var(--text);
+    padding: 6px 12px;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 12px;
+  }
+  .toolbar button:hover { background: var(--border); }
+  .toolbar button.primary {
+    background: var(--accent); color: #182228; border-color: var(--accent);
+  }
+
+  pre.export {
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    padding: 10px;
+    font-family: ui-monospace, Consolas, monospace;
+    font-size: 11px;
+    color: var(--text-strong);
+    overflow-x: auto;
+    max-height: 240px;
+    overflow-y: auto;
+    white-space: pre;
+  }
+</style>
+</head>
+<body>
+<h1>Controller geometry tuner — full</h1>
+<p class="sub">All hit zone + sprite parameters live-editable. Bookmark this file (<code>tools/controller_tuner.html</code>) for future tweaks. Use <b>Export → controller.js snippet</b> to paste tuned numbers back into the app.</p>
+
+<div class="layout">
+  <div class="pad-frame">
+    <svg class="controller" viewBox="0 0 240 130" id="svg"></svg>
+    <div class="toolbar" style="margin-top:10px">
+      <button id="btn-reset">Reset to v1.1.2 defaults</button>
+      <button id="btn-export" class="primary">Export → controller.js snippet</button>
+    </div>
+    <pre class="export" id="export-out" hidden></pre>
+  </div>
+
+  <div class="controls">
+    <div class="toolbar">
+      <span style="align-self:center; color: var(--muted); font-size:11px">binding preview:</span>
+      <div class="seg" id="seg" style="flex:1">
+        <button class="seg-item on" data-bind="key">Key</button>
+        <button class="seg-item"    data-bind="macro">Macro</button>
+        <button class="seg-item"    data-bind="unbound">Unbound</button>
+      </div>
+    </div>
+
+    <!-- group templates rendered by JS -->
+    <div id="group-container"></div>
+
+  </div>
+</div>
+
+<script>
+const NS = 'http://www.w3.org/2000/svg';
+const BODY_PATH =
+  'M 50 30 Q 38 30 36 50 Q 32 80 62 92 Q 75 102 95 102 ' +
+  'L 145 102 Q 165 102 178 92 Q 208 80 204 50 Q 202 30 190 30 L 50 30 Z';
+
+// ── Default values (matches v1.1.2 controller.js) ─────────────────────────
+const defaults = {
+  // Touchpad
+  touchpad: { x: 101, y: 36, w: 38, h: 16, rx: 5 },
+  // Shoulders L1/R1
+  shoulder: { x_l: 48, x_r: 170, y: 22, w: 22, h: 6 },
+  // Triggers L2/R2
+  trigger:  { x_l: 48, x_r: 170, y: 14, w: 22, h: 6 },
+  // Meta rects (Share / Options)
+  share:    { x: 82,  y: 38, w: 7, h: 3 },
+  options:  { x: 151, y: 38, w: 7, h: 3 },
+  // PS button
+  ps:       { cx: 120, cy: 62, r: 3 },
+  // Face buttons: 4 circles in a diamond
+  face:     { cx: 184, cy: 58, spacing: 8, r: 4 },
+  // D-pad cluster center + pentagon params
+  dpad:     { cx: 59, cy: 57, R_inner: 4, half_w: 3.5, R_outer: 16 },
+  // L stick well
+  lstick:   { cx: 84,  cy: 82, r: 9 },
+  // R stick well
+  rstick:   { cx: 156, cy: 82, r: 9 },
+  // L3/R3 inner press circle radius (shared)
+  stickpress: { r: 5 },
+  // Stick wedge (donut quarter) params
+  stickw:   { r_in: 10, r_out: 17, d: 3 },
+};
+
+let state = JSON.parse(JSON.stringify(defaults));
+let bindingKind = 'key';
+
+// ── Group definitions for the side panel ──────────────────────────────────
+// Each group has: title, keyPath, fields[{key, label, min, max, step}]
+// Optional derived(state) → string of HTML to show.
+const groups = [
+  {
+    title: 'Touchpad', path: 'touchpad', fields: [
+      ['x',  'x',      80,  130, 0.5],
+      ['y',  'y',      28,   50, 0.5],
+      ['w',  'width',  20,   60, 0.5],
+      ['h',  'height',  8,   24, 0.5],
+      ['rx', 'corner',  0,    8, 0.5],
+    ],
+  },
+  {
+    title: 'Shoulders (L1 / R1)', path: 'shoulder', fields: [
+      ['x_l', 'x_left',  30,   60, 0.5],
+      ['x_r', 'x_right',150,  200, 0.5],
+      ['y',   'y',        4,   34, 0.5],
+      ['w',   'width',   10,   40, 0.5],
+      ['h',   'height',   2,   12, 0.5],
+    ],
+  },
+  {
+    title: 'Triggers (L2 / R2)', path: 'trigger', fields: [
+      ['x_l', 'x_left',  30,   60, 0.5],
+      ['x_r', 'x_right',150,  200, 0.5],
+      ['y',   'y',        2,   26, 0.5],
+      ['w',   'width',   10,   40, 0.5],
+      ['h',   'height',   2,   12, 0.5],
+    ],
+    derived: s => {
+      const gap = s.shoulder.y - (s.trigger.y + s.trigger.h);
+      return `gap(L2→L1) = <b>${gap.toFixed(2)}</b> · gap(L1→body) = <b>${(30 - (s.shoulder.y + s.shoulder.h)).toFixed(2)}</b>`;
+    },
+  },
+  {
+    title: 'Share', path: 'share', fields: [
+      ['x', 'x',     60,  100, 0.5],
+      ['y', 'y',     30,   50, 0.5],
+      ['w', 'width',  3,   16, 0.5],
+      ['h', 'height', 1,    8, 0.5],
+    ],
+  },
+  {
+    title: 'Options', path: 'options', fields: [
+      ['x', 'x',    130,  170, 0.5],
+      ['y', 'y',     30,   50, 0.5],
+      ['w', 'width',  3,   16, 0.5],
+      ['h', 'height', 1,    8, 0.5],
+    ],
+  },
+  {
+    title: 'PS button', path: 'ps', fields: [
+      ['cx', 'cx',  100, 140, 0.5],
+      ['cy', 'cy',   50,  76, 0.5],
+      ['r',  'r',     1,   7, 0.1],
+    ],
+  },
+  {
+    title: 'Face buttons (diamond)', path: 'face', fields: [
+      ['cx',      'centre x', 160, 210, 0.5],
+      ['cy',      'centre y',  40,  80, 0.5],
+      ['spacing', 'spacing',    3,  16, 0.5],
+      ['r',       'radius',     2,   8, 0.1],
+    ],
+  },
+  {
+    title: 'D-pad pentagons', path: 'dpad', fields: [
+      ['cx',      'centre x',  30,  90, 0.5],
+      ['cy',      'centre y',  40,  80, 0.5],
+      ['R_inner', 'R_inner',  0.5,  8, 0.1],
+      ['half_w',  'half_w',     1,  8, 0.1],
+      ['R_outer', 'R_outer',    6, 24, 0.1],
+    ],
+    derived: s => {
+      const d = s.dpad;
+      const R_shoulder = d.R_inner + d.half_w;
+      const gap = d.R_inner * Math.SQRT2;
+      const len = d.R_outer - d.R_inner;
+      const wid = d.half_w * 2;
+      return `R_shoulder (auto) = <b>${R_shoulder.toFixed(2)}</b><br>` +
+             `gap = R_inner × √2 = <b>${gap.toFixed(2)}</b><br>` +
+             `length × width = ${len.toFixed(2)} × ${wid.toFixed(2)} (ratio ${(len/wid).toFixed(2)})`;
+    },
+  },
+  {
+    title: 'Left stick well', path: 'lstick', fields: [
+      ['cx', 'cx', 50, 110, 0.5],
+      ['cy', 'cy', 60, 100, 0.5],
+      ['r',  'r',   4,  15, 0.1],
+    ],
+  },
+  {
+    title: 'Right stick well', path: 'rstick', fields: [
+      ['cx', 'cx', 130, 190, 0.5],
+      ['cy', 'cy',  60, 100, 0.5],
+      ['r',  'r',    4,  15, 0.1],
+    ],
+  },
+  {
+    title: 'L3 / R3 inner press', path: 'stickpress', fields: [
+      ['r', 'r', 2, 9, 0.1],
+    ],
+  },
+  {
+    title: 'Stick donut quarter', path: 'stickw', fields: [
+      ['r_in',  'r_in',  8, 18, 0.1],
+      ['r_out', 'r_out',10, 26, 0.1],
+      ['d',     'gap d', 0.5, 6, 0.1],
+    ],
+    derived: s => {
+      const w = s.stickw;
+      const gap = w.d * Math.SQRT2;
+      return `thickness = r_out − r_in = <b>${(w.r_out - w.r_in).toFixed(2)}</b><br>` +
+             `gap (between quarters) = d × √2 = <b>${gap.toFixed(2)}</b>`;
+    },
+  },
+];
+
+// ── Build side panel ──────────────────────────────────────────────────────
+const gc = document.getElementById('group-container');
+for (const g of groups) {
+  const det = document.createElement('details');
+  det.open = ['Touchpad','Shoulders (L1 / R1)','Triggers (L2 / R2)','D-pad pentagons','Stick donut quarter'].includes(g.title);
+  det.innerHTML = `
+    <summary>${g.title}</summary>
+    <div class="body-rows" data-path="${g.path}">
+      ${g.fields.map(([k, lbl, mn, mx, st]) => {
+        const v = state[g.path][k];
+        return `<div class="row">
+          <label>${lbl}</label>
+          <input type="range"  data-k="${k}" min="${mn}" max="${mx}" step="${st}" value="${v}">
+          <input type="number" data-k="${k}" min="${mn}" max="${mx}" step="${st}" value="${v}">
+        </div>`;
+      }).join('')}
+      ${g.derived ? `<div class="derived" data-derived="${g.path}"></div>` : ''}
+    </div>
+  `;
+  gc.appendChild(det);
+}
+
+// Wire range ↔ number sync
+gc.querySelectorAll('.body-rows').forEach(rows => {
+  const path = rows.dataset.path;
+  rows.querySelectorAll('.row').forEach(row => {
+    const r = row.querySelector('input[type=range]');
+    const n = row.querySelector('input[type=number]');
+    const k = r.dataset.k;
+    const upd = src => {
+      state[path][k] = parseFloat(src.value);
+      (src === r ? n : r).value = src.value;
+      render();
+    };
+    r.addEventListener('input', () => upd(r));
+    n.addEventListener('input', () => upd(n));
+  });
+});
+
+// Segmented binding state
+document.querySelectorAll('.seg-item').forEach(b => {
+  b.addEventListener('click', () => {
+    bindingKind = b.dataset.bind;
+    document.querySelectorAll('.seg-item').forEach(x =>
+      x.classList.toggle('on', x.dataset.bind === bindingKind));
+    render();
+  });
+});
+
+document.getElementById('btn-reset').addEventListener('click', () => {
+  state = JSON.parse(JSON.stringify(defaults));
+  // sync UI
+  groups.forEach(g => {
+    g.fields.forEach(([k]) => {
+      const rows = gc.querySelector(`[data-path="${g.path}"]`);
+      const r = rows.querySelector(`input[type=range][data-k="${k}"]`);
+      const n = rows.querySelector(`input[type=number][data-k="${k}"]`);
+      const v = state[g.path][k];
+      r.value = v; n.value = v;
+    });
+  });
+  render();
+});
+
+document.getElementById('btn-export').addEventListener('click', () => {
+  const pre = document.getElementById('export-out');
+  pre.hidden = false;
+  pre.textContent = generateExport();
+});
+
+function generateExport() {
+  const s = state;
+  // Build a controller.js-style snippet matching the v1.1.x structure.
+  const fc = (n) => Number(n.toFixed(2));
+  const fcs = (n) => Number.isInteger(n) ? n : n.toFixed(2);
+  const lines = [];
+  lines.push('// Paste into rust/web/controller.js where the named values live.');
+  lines.push('');
+  lines.push('// ── Sprite geometry constants ─────────────────────────────');
+  lines.push(`const TOUCHPAD = { x: ${fcs(s.touchpad.x)}, y: ${fcs(s.touchpad.y)}, w: ${fcs(s.touchpad.w)}, h: ${fcs(s.touchpad.h)}, rx: ${fcs(s.touchpad.rx)} };`);
+  lines.push(`const L_STICK  = { cx: ${fcs(s.lstick.cx)}, cy: ${fcs(s.lstick.cy)}, r: ${fcs(s.lstick.r)} };`);
+  lines.push(`const R_STICK  = { cx: ${fcs(s.rstick.cx)}, cy: ${fcs(s.rstick.cy)}, r: ${fcs(s.rstick.r)} };`);
+  lines.push('');
+  lines.push('// ── Hit zones (elements() snippets) ───────────────────────');
+  lines.push(`el(23, 'trigger', { rx: ${fcs(s.trigger.x_l)}, ry: ${fcs(s.trigger.y)}, w: ${fcs(s.trigger.w)}, h: ${fcs(s.trigger.h)} }, 'L2'),`);
+  lines.push(`el(24, 'trigger', { rx: ${fcs(s.trigger.x_r)}, ry: ${fcs(s.trigger.y)}, w: ${fcs(s.trigger.w)}, h: ${fcs(s.trigger.h)} }, 'R2'),`);
+  lines.push(`el(9,  'shoulder',{ rx: ${fcs(s.shoulder.x_l)}, ry: ${fcs(s.shoulder.y)}, w: ${fcs(s.shoulder.w)}, h: ${fcs(s.shoulder.h)} }, 'L1'),`);
+  lines.push(`el(10, 'shoulder',{ rx: ${fcs(s.shoulder.x_r)}, ry: ${fcs(s.shoulder.y)}, w: ${fcs(s.shoulder.w)}, h: ${fcs(s.shoulder.h)} }, 'R1'),`);
+  lines.push(`el(4,  'meta_rect',{ rx: ${fcs(s.share.x)},   ry: ${fcs(s.share.y)},   w: ${fcs(s.share.w)}, h: ${fcs(s.share.h)} }, 'Share'),`);
+  lines.push(`el(6,  'meta_rect',{ rx: ${fcs(s.options.x)}, ry: ${fcs(s.options.y)}, w: ${fcs(s.options.w)}, h: ${fcs(s.options.h)} }, 'Options'),`);
+  lines.push(`el(5,  'circle',  { cx: ${fcs(s.ps.cx)}, cy: ${fcs(s.ps.cy)}, r: ${fcs(s.ps.r)} }, 'PS'),`);
+  // Face buttons in diamond
+  const fx = s.face.cx, fy = s.face.cy, sp = s.face.spacing, fr = s.face.r;
+  lines.push(`el(3,  'face', { cx: ${fcs(fx)},        cy: ${fcs(fy - sp)}, r: ${fcs(fr)} }, 'Triangle'),`);
+  lines.push(`el(1,  'face', { cx: ${fcs(fx + sp)},   cy: ${fcs(fy)},      r: ${fcs(fr)} }, 'Circle'),`);
+  lines.push(`el(0,  'face', { cx: ${fcs(fx)},        cy: ${fcs(fy + sp)}, r: ${fcs(fr)} }, 'Cross'),`);
+  lines.push(`el(2,  'face', { cx: ${fcs(fx - sp)},   cy: ${fcs(fy)},      r: ${fcs(fr)} }, 'Square'),`);
+  // D-pad
+  lines.push(`el(11, 'dpad_wedge', { cx: ${fcs(s.dpad.cx)}, cy: ${fcs(s.dpad.cy)}, dir: 'up'    }, 'D-up'),`);
+  lines.push(`el(12, 'dpad_wedge', { cx: ${fcs(s.dpad.cx)}, cy: ${fcs(s.dpad.cy)}, dir: 'down'  }, 'D-down'),`);
+  lines.push(`el(13, 'dpad_wedge', { cx: ${fcs(s.dpad.cx)}, cy: ${fcs(s.dpad.cy)}, dir: 'left'  }, 'D-left'),`);
+  lines.push(`el(14, 'dpad_wedge', { cx: ${fcs(s.dpad.cx)}, cy: ${fcs(s.dpad.cy)}, dir: 'right' }, 'D-right'),`);
+  // Stick press radii
+  lines.push(`el(7, 'stick_press', { cx: L_STICK.cx, cy: L_STICK.cy, r: ${fcs(s.stickpress.r)} }, 'L3'),`);
+  lines.push(`el(8, 'stick_press', { cx: R_STICK.cx, cy: R_STICK.cy, r: ${fcs(s.stickpress.r)} }, 'R3'),`);
+  lines.push('');
+  lines.push('// ── mkArrow params (in the function body) ──────────────────');
+  lines.push(`const R_inner    = ${fcs(s.dpad.R_inner)};`);
+  lines.push(`const half_w     = ${fcs(s.dpad.half_w)};`);
+  lines.push(`const R_shoulder = R_inner + half_w; // = ${fcs(s.dpad.R_inner + s.dpad.half_w)}`);
+  lines.push(`const R_outer    = ${fcs(s.dpad.R_outer)};`);
+  lines.push('');
+  lines.push('// ── mkQuarter params (in the function body) ────────────────');
+  lines.push(`const r_in  = ${fcs(s.stickw.r_in)};`);
+  lines.push(`const r_out = ${fcs(s.stickw.r_out)};`);
+  lines.push(`const d     = ${fcs(s.stickw.d)};`);
+  return lines.join('\n');
+}
+
+// ── SVG primitives ────────────────────────────────────────────────────────
+function mkRect(x, y, w, h, cls, rad=0) {
+  const r = document.createElementNS(NS, 'rect');
+  r.setAttribute('x', x); r.setAttribute('y', y);
+  r.setAttribute('width', w); r.setAttribute('height', h);
+  if (rad) r.setAttribute('rx', rad);
+  r.setAttribute('class', cls);
+  return r;
+}
+function mkCircle(cx, cy, r, cls) {
+  const c = document.createElementNS(NS, 'circle');
+  c.setAttribute('cx', cx); c.setAttribute('cy', cy);
+  c.setAttribute('r', r); c.setAttribute('class', cls);
+  return c;
+}
+function mkPath(d, cls) {
+  const p = document.createElementNS(NS, 'path');
+  p.setAttribute('d', d); p.setAttribute('class', cls);
+  return p;
+}
+
+function bindClass(kind) {
+  return kind === 'key'   ? 'binding-key'
+       : kind === 'macro' ? 'binding-macro'
+                          : 'binding-unbound';
+}
+
+const rotMap = {
+  up:    ([x, y]) => [ x,  y],
+  right: ([x, y]) => [-y,  x],
+  down:  ([x, y]) => [-x, -y],
+  left:  ([x, y]) => [ y, -x],
+};
+
+function mkArrow(cx, cy, dir, p) {
+  const R_shoulder = p.R_inner + p.half_w;
+  const up = [
+    [-p.half_w, -p.R_outer],
+    [+p.half_w, -p.R_outer],
+    [+p.half_w, -R_shoulder],
+    [0,         -p.R_inner],
+    [-p.half_w, -R_shoulder],
+  ];
+  const rot = rotMap[dir];
+  const pts = up.map(rot).map(([dx, dy]) => `${cx + dx} ${cy + dy}`).join(' L ');
+  return `M ${pts} Z`;
+}
+
+function mkQuarter(cx, cy, dir, p) {
+  const xo_p = (-p.d + Math.sqrt(2 * p.r_out * p.r_out - p.d * p.d)) / 2;
+  const xi_p = (-p.d + Math.sqrt(2 * p.r_in  * p.r_in  - p.d * p.d)) / 2;
+  const oR = [ xo_p, -xo_p - p.d];
+  const oL = [-xo_p, -xo_p - p.d];
+  const iL = [-xi_p, -xi_p - p.d];
+  const iR = [ xi_p, -xi_p - p.d];
+  const rot = rotMap[dir];
+  const [oR2, oL2, iL2, iR2] = [oR, oL, iL, iR].map(rot).map(
+    ([x, y]) => [cx + x, cy + y]);
+  return [
+    `M ${oR2[0]} ${oR2[1]}`,
+    `A ${p.r_out} ${p.r_out} 0 0 0 ${oL2[0]} ${oL2[1]}`,
+    `L ${iL2[0]} ${iL2[1]}`,
+    `A ${p.r_in}  ${p.r_in}  0 0 1 ${iR2[0]} ${iR2[1]}`,
+    'Z',
+  ].join(' ');
+}
+
+function render() {
+  const svg = document.getElementById('svg');
+  svg.innerHTML = '';
+  const s = state;
+
+  // Body
+  svg.appendChild(mkPath(BODY_PATH, 'body'));
+
+  // Touchpad
+  const tp = s.touchpad;
+  svg.appendChild(mkRect(tp.x, tp.y, tp.w, tp.h, 'touchpad', tp.rx));
+
+  // Shoulders + triggers
+  const sh = s.shoulder, tr = s.trigger;
+  svg.appendChild(mkRect(sh.x_l, sh.y, sh.w, sh.h, 'meta-rect', 2));
+  svg.appendChild(mkRect(sh.x_r, sh.y, sh.w, sh.h, 'meta-rect', 2));
+  svg.appendChild(mkRect(tr.x_l, tr.y, tr.w, tr.h, 'meta-rect', 2));
+  svg.appendChild(mkRect(tr.x_r, tr.y, tr.w, tr.h, 'meta-rect', 2));
+
+  // Share / Options
+  svg.appendChild(mkRect(s.share.x,   s.share.y,   s.share.w,   s.share.h,   'meta-rect', 1));
+  svg.appendChild(mkRect(s.options.x, s.options.y, s.options.w, s.options.h, 'meta-rect', 1));
+
+  // PS
+  svg.appendChild(mkCircle(s.ps.cx, s.ps.cy, s.ps.r, 'meta-rect'));
+
+  // Face buttons
+  const fcls = `hit ${bindClass(bindingKind)}`;
+  const f = s.face;
+  svg.appendChild(mkCircle(f.cx,            f.cy - f.spacing, f.r, fcls));
+  svg.appendChild(mkCircle(f.cx + f.spacing,f.cy,             f.r, fcls));
+  svg.appendChild(mkCircle(f.cx,            f.cy + f.spacing, f.r, fcls));
+  svg.appendChild(mkCircle(f.cx - f.spacing,f.cy,             f.r, fcls));
+
+  // Stick wells
+  svg.appendChild(mkCircle(s.lstick.cx, s.lstick.cy, s.lstick.r, 'stick-ring'));
+  svg.appendChild(mkCircle(s.rstick.cx, s.rstick.cy, s.rstick.r, 'stick-ring'));
+
+  // D-pad pentagons
+  const dcls = `hit wedge ${bindClass(bindingKind)}`;
+  for (const dir of ['up','down','left','right']) {
+    svg.appendChild(mkPath(mkArrow(s.dpad.cx, s.dpad.cy, dir, s.dpad), dcls));
+  }
+
+  // Stick donut quarters
+  for (const [scx, scy] of [[s.lstick.cx, s.lstick.cy], [s.rstick.cx, s.rstick.cy]]) {
+    for (const dir of ['up','down','left','right']) {
+      svg.appendChild(mkPath(mkQuarter(scx, scy, dir, s.stickw), dcls));
+    }
+  }
+
+  // L3 / R3 inner press
+  svg.appendChild(mkCircle(s.lstick.cx, s.lstick.cy, s.stickpress.r, fcls));
+  svg.appendChild(mkCircle(s.rstick.cx, s.rstick.cy, s.stickpress.r, fcls));
+
+  // Derived labels
+  document.querySelectorAll('[data-derived]').forEach(el => {
+    const g = groups.find(g => g.path === el.dataset.derived);
+    if (g && g.derived) el.innerHTML = g.derived(s);
+  });
+}
+
+render();
+</script>
+</body>
+</html>
