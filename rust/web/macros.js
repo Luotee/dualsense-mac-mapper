@@ -10,6 +10,7 @@
 
 import { invoke, listen } from './ipc.js';
 import { normaliseKeyEvent } from './key_capture.js';
+import { setCaptureActive } from './capture_state.js';
 
 let config       = null;   // Current snapshot from get_config
 let selectedName = null;   // Which macro is in the editor
@@ -319,7 +320,7 @@ function buildStepRow(step, i) {
 function activateKeyCapture(keyCell, stepIdx) {
   keyCell.classList.add('capturing');
   keyCell.textContent = 'Press a key…';
-  invoke('set_capture_active', { active: true }).catch(() => {});
+  setCaptureActive(true);
 
   function onKey(ev) {
     const r = normaliseKeyEvent(ev);
@@ -331,7 +332,7 @@ function activateKeyCapture(keyCell, stepIdx) {
     working.steps[stepIdx].key = r.name;
     keyCell.classList.remove('capturing');
     keyCell.textContent = r.name;
-    invoke('set_capture_active', { active: false }).catch(() => {});
+    setCaptureActive(false);
     document.removeEventListener('keydown', onKey);
     // Refresh validity
     const row = keyCell.closest('tr');
@@ -342,7 +343,7 @@ function activateKeyCapture(keyCell, stepIdx) {
   function abort() {
     keyCell.classList.remove('capturing');
     keyCell.textContent = working.steps[stepIdx]?.key || '(click to set)';
-    invoke('set_capture_active', { active: false }).catch(() => {});
+    setCaptureActive(false);
     document.removeEventListener('keydown', onKey);
   }
 
@@ -378,7 +379,7 @@ function openQuickTap(holder, triggerBtn) {
   keyCell.addEventListener('click', () => {
     keyCell.classList.add('capturing');
     keyCell.textContent = 'Press a key…';
-    invoke('set_capture_active', { active: true }).catch(() => {});
+    setCaptureActive(true);
 
     function onKey(ev) {
       const r = normaliseKeyEvent(ev);
@@ -387,13 +388,13 @@ function openQuickTap(holder, triggerBtn) {
       capturedKey = r.name;
       keyCell.classList.remove('capturing');
       keyCell.textContent = r.name;
-      invoke('set_capture_active', { active: false }).catch(() => {});
+      setCaptureActive(false);
       document.removeEventListener('keydown', onKey);
     }
     function abort() {
       keyCell.classList.remove('capturing');
       keyCell.textContent = capturedKey || '(click to set)';
-      invoke('set_capture_active', { active: false }).catch(() => {});
+      setCaptureActive(false);
       document.removeEventListener('keydown', onKey);
     }
     document.addEventListener('keydown', onKey);

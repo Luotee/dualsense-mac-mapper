@@ -3,6 +3,7 @@ import * as mappings  from './mappings.js';
 import * as macros    from './macros.js';
 import * as settings  from './settings.js';
 import * as activity  from './activity.js';
+import * as kbdMirror from './keyboard_mirror.js';
 
 const tabs = ['mappings', 'macros', 'settings'];
 
@@ -44,3 +45,5 @@ await mappings.init();
 await macros.init();
 await settings.init();
 await activity.init();
+const svgEl = document.querySelector('#controller-host svg.controller');
+if (svgEl) await kbdMirror.init(svgEl);
