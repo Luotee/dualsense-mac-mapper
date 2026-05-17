@@ -24,6 +24,8 @@ async function reload() {
     log_events: cfg.log_events,
     touchpad_cursor_enabled: cfg.touchpad_cursor_enabled ?? true,
     touchpad_cursor_sensitivity: cfg.touchpad_cursor_sensitivity ?? 1.5,
+    touchpad_midpoint_x: cfg.touchpad_midpoint_x ?? 960,
+    touchpad_midpoint_y: cfg.touchpad_midpoint_y ?? 540,
   };
 }
 
@@ -79,6 +81,16 @@ function render() {
         <label for="f-touchpad-sens">Cursor sensitivity <span class="hint">(0.1–10.0)</span></label>
         <input id="f-touchpad-sens" type="number" step="0.1" min="0.1" max="10"
                value="${current.touchpad_cursor_sensitivity}">
+      </div>
+      <div class="field">
+        <label for="f-touchpad-mid-x">Quadrant midpoint X <span class="hint">(raw, default 960; watch the debug dot to calibrate)</span></label>
+        <input id="f-touchpad-mid-x" type="number" step="1" min="1" max="4094"
+               value="${current.touchpad_midpoint_x}">
+      </div>
+      <div class="field">
+        <label for="f-touchpad-mid-y">Quadrant midpoint Y <span class="hint">(raw, default 540)</span></label>
+        <input id="f-touchpad-mid-y" type="number" step="1" min="1" max="4094"
+               value="${current.touchpad_midpoint_y}">
       </div>
     </div>
 
@@ -147,6 +159,8 @@ async function save() {
     log_events: document.getElementById('f-log-events').checked,
     touchpad_cursor_enabled: document.getElementById('f-touchpad-cursor').checked,
     touchpad_cursor_sensitivity: parseFloat(document.getElementById('f-touchpad-sens').value),
+    touchpad_midpoint_x: parseInt(document.getElementById('f-touchpad-mid-x').value, 10),
+    touchpad_midpoint_y: parseInt(document.getElementById('f-touchpad-mid-y').value, 10),
   };
   try {
     await invoke('set_settings', { settings: payload });

@@ -119,6 +119,7 @@ function el(id, kind, geo, label) {
 
 function touchpadQuadElements() {
   const g = TOUCHPAD_QUAD_GAP;
+  const r = TOUCHPAD.rx;
   const cx = TOUCHPAD.x + TOUCHPAD.w / 2;
   const cy = TOUCHPAD.y + TOUCHPAD.h / 2;
   const w = TOUCHPAD.w / 2 - g / 2;
@@ -127,11 +128,13 @@ function touchpadQuadElements() {
   const rightX = cx + g / 2;
   const topY   = TOUCHPAD.y;
   const botY   = cy + g / 2;
+  // `corner` names which of the 4 corners is the outer rounded one;
+  // the other three corners are sharp (inner edges meeting the gap).
   return [
-    el(25, 'touchpad_quad', { x: leftX,  y: topY, w, h }, 'TP-TL'),
-    el(26, 'touchpad_quad', { x: rightX, y: topY, w, h }, 'TP-TR'),
-    el(27, 'touchpad_quad', { x: leftX,  y: botY, w, h }, 'TP-BL'),
-    el(28, 'touchpad_quad', { x: rightX, y: botY, w, h }, 'TP-BR'),
+    el(25, 'touchpad_quad', { x: leftX,  y: topY, w, h, r, corner: 'tl' }, 'TP-TL'),
+    el(26, 'touchpad_quad', { x: rightX, y: topY, w, h, r, corner: 'tr' }, 'TP-TR'),
+    el(27, 'touchpad_quad', { x: leftX,  y: botY, w, h, r, corner: 'bl' }, 'TP-BL'),
+    el(28, 'touchpad_quad', { x: rightX, y: botY, w, h, r, corner: 'br' }, 'TP-BR'),
   ];
 }
 
@@ -210,12 +213,11 @@ export function render(parent, bindings) {
         break;
       }
       case 'touchpad_quad': {
-        // Rectangular quadrant. The centre-gap (set in
-        // touchpadQuadElements) leaves the decorative pad visible
-        // between the 4 zones; the binding-* class fills each
-        // quadrant the same way face buttons get filled.
-        shape = mkRect(ns, e.geo.x, e.geo.y, e.geo.w, e.geo.h, `hit ${cls}`);
-        shape.setAttribute('rx', '0.5');
+        // Each quadrant fills the touchpad rounded rect with ONE outer
+        // corner curved (matching the pad's rx) and three inner corners
+        // sharp, so the four quadrants together rebuild the rounded
+        // touchpad outline with a cross-shaped gap in the middle.
+        shape = mkTouchpadQuad(ns, e.geo, `hit ${cls}`);
         break;
       }
       case 'circle':
@@ -297,6 +299,48 @@ export function clearPress(svg, id) {
   }
 }
 
+// ─── Touchpad debug dot ────────────────────────────────────────────────────────
+//
+// Renders a small dot on the touchpad SVG at the proportional position
+// of the most recent click. Lets the user verify the raw coords being
+// captured match where they actually touched — if they don't, the
+// `touchpad_midpoint_x` / `touchpad_midpoint_y` settings can be tuned
+// to match the user's physical pad coordinate range.
+
+const TOUCHPAD_RAW_MAX_X = 1919;
+const TOUCHPAD_RAW_MAX_Y = 1079;
+let _debugDot = null;
+let _debugDotTimer = null;
+
+/**
+ * Show a debug dot at the touchpad position corresponding to (raw_x,
+ * raw_y). The dot fades by being removed after a short timeout.
+ *
+ * @param {SVGElement} svg
+ * @param {number} raw_x  - 0..1919 (or whatever the pad reports)
+ * @param {number} raw_y  - 0..1079
+ */
+export function showTouchpadDot(svg, raw_x, raw_y) {
+  if (!svg) return;
+  if (_debugDot && _debugDot.parentNode) _debugDot.remove();
+  if (_debugDotTimer) clearTimeout(_debugDotTimer);
+  const ns = 'http://www.w3.org/2000/svg';
+  const dot = document.createElementNS(ns, 'circle');
+  const cx = TOUCHPAD.x + (raw_x / TOUCHPAD_RAW_MAX_X) * TOUCHPAD.w;
+  const cy = TOUCHPAD.y + (raw_y / TOUCHPAD_RAW_MAX_Y) * TOUCHPAD.h;
+  dot.setAttribute('cx', String(cx));
+  dot.setAttribute('cy', String(cy));
+  dot.setAttribute('r',  '1.2');
+  dot.setAttribute('class', 'touchpad-debug-dot');
+  svg.appendChild(dot);
+  _debugDot = dot;
+  _debugDotTimer = setTimeout(() => {
+    if (_debugDot === dot && dot.parentNode) dot.remove();
+    if (_debugDot === dot) _debugDot = null;
+    _debugDotTimer = null;
+  }, 1200);
+}
+
 // ─── Selection ring ───────────────────────────────────────────────────────────
 
 let _selectionRing = null;
@@ -367,6 +411,37 @@ function mkCircle(ns, cx, cy, r, cls) {
   c.setAttribute('r',     String(r));
   c.setAttribute('class', cls);
   return c;
+}
+
+/**
+ * Rectangle with exactly one rounded corner (the "outer" corner of a
+ * touchpad quadrant). The other three corners are sharp so adjacent
+ * quadrants share straight edges across the centre gap and the four
+ * quadrants together rebuild the pad's rounded outer outline.
+ *
+ * `geo` shape:
+ *   { x, y, w, h, r, corner: 'tl' | 'tr' | 'bl' | 'br' }
+ */
+function mkTouchpadQuad(ns, geo, cls) {
+  const { x, y, w, h, r, corner } = geo;
+  const path = (() => {
+    const x1 = x + w, y1 = y + h;
+    switch (corner) {
+      case 'tl':
+        return `M ${x} ${y + r} A ${r} ${r} 0 0 1 ${x + r} ${y} L ${x1} ${y} L ${x1} ${y1} L ${x} ${y1} Z`;
+      case 'tr':
+        return `M ${x} ${y} L ${x1 - r} ${y} A ${r} ${r} 0 0 1 ${x1} ${y + r} L ${x1} ${y1} L ${x} ${y1} Z`;
+      case 'bl':
+        return `M ${x} ${y} L ${x1} ${y} L ${x1} ${y1} L ${x + r} ${y1} A ${r} ${r} 0 0 1 ${x} ${y1 - r} Z`;
+      case 'br':
+      default:
+        return `M ${x} ${y} L ${x1} ${y} L ${x1} ${y1 - r} A ${r} ${r} 0 0 1 ${x1 - r} ${y1} L ${x} ${y1} Z`;
+    }
+  })();
+  const p = document.createElementNS(ns, 'path');
+  p.setAttribute('d',     path);
+  p.setAttribute('class', cls);
+  return p;
 }
 
 /**

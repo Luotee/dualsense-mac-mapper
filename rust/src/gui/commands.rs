@@ -251,10 +251,16 @@ pub struct Settings {
     pub touchpad_cursor_enabled: bool,
     #[serde(default = "default_touchpad_cursor_sensitivity")]
     pub touchpad_cursor_sensitivity: f32,
+    #[serde(default = "default_touchpad_midpoint_x")]
+    pub touchpad_midpoint_x: u16,
+    #[serde(default = "default_touchpad_midpoint_y")]
+    pub touchpad_midpoint_y: u16,
 }
 
 fn default_touchpad_cursor_enabled() -> bool { true }
 fn default_touchpad_cursor_sensitivity() -> f32 { 1.5 }
+fn default_touchpad_midpoint_x() -> u16 { 960 }
+fn default_touchpad_midpoint_y() -> u16 { 540 }
 
 impl Settings {
     /// Spec §9 — the factory defaults that ship with the example config.
@@ -267,6 +273,8 @@ impl Settings {
             log_events: true,
             touchpad_cursor_enabled: true,
             touchpad_cursor_sensitivity: 1.5,
+            touchpad_midpoint_x: 960,
+            touchpad_midpoint_y: 540,
         }
     }
 }
@@ -300,6 +308,8 @@ pub fn set_settings_impl(
     doc.set_log_events(s.log_events);
     doc.set_touchpad_cursor_enabled(s.touchpad_cursor_enabled);
     doc.set_touchpad_cursor_sensitivity(s.touchpad_cursor_sensitivity);
+    doc.set_touchpad_midpoint_x(s.touchpad_midpoint_x);
+    doc.set_touchpad_midpoint_y(s.touchpad_midpoint_y);
     doc.validate()?;
     write_atomic(config_path, &doc)?;
     let mut live = engine.config_write();
@@ -310,12 +320,16 @@ pub fn set_settings_impl(
     live.log_events = s.log_events;
     live.touchpad_cursor_enabled = s.touchpad_cursor_enabled;
     live.touchpad_cursor_sensitivity = s.touchpad_cursor_sensitivity;
+    live.touchpad_midpoint_x = s.touchpad_midpoint_x;
+    live.touchpad_midpoint_y = s.touchpad_midpoint_y;
     drop(live);
-    // Update the HID worker's atomics so cursor changes take effect on
-    // the next decoded frame without an engine restart.
+    // Update the HID worker's atomics so cursor / quadrant changes take
+    // effect on the next decoded frame without an engine restart.
     let params = engine.cursor_params();
     params.set_enabled(s.touchpad_cursor_enabled);
     params.set_sensitivity(s.touchpad_cursor_sensitivity);
+    params.set_midpoint_x(s.touchpad_midpoint_x);
+    params.set_midpoint_y(s.touchpad_midpoint_y);
     Ok(())
 }
 

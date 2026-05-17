@@ -33,6 +33,9 @@ pub enum EngineEvent {
     KeyEmit    { ts_ms: u64, key: String, action: &'static str /* "down"|"up" */ },
     MacroStart { ts_ms: u64, name: String },
     MacroEnd   { ts_ms: u64, name: String, completed: bool },
+    /// Diagnostic — emitted once per touchpad click rising edge with
+    /// the raw finger position captured at that instant.
+    TouchpadClick { raw_x: u16, raw_y: u16, quadrant: u32 },
 }
 
 /// Snapshot of the controller's current connection state. Polled by the GUI
@@ -193,9 +196,11 @@ pub struct Engine {
 impl Engine {
     /// Spawn with a real gamepad source.
     pub fn spawn(cfg: Config, dry_run: bool) -> Result<Self> {
-        let cursor_params = CursorParams::new(
+        let cursor_params = CursorParams::with_midpoints(
             cfg.touchpad_cursor_sensitivity,
             cfg.touchpad_cursor_enabled,
+            cfg.touchpad_midpoint_x,
+            cfg.touchpad_midpoint_y,
         );
         let src = GamepadSource::new(cursor_params.clone())?;
         Self::spawn_inner(cfg, dry_run, src, cursor_params)
@@ -206,9 +211,11 @@ impl Engine {
     /// Not part of the stable public API — used by integration tests.
     #[doc(hidden)]
     pub fn spawn_with_fake_gamepad(cfg: Config) -> Result<Self> {
-        let cursor_params = CursorParams::new(
+        let cursor_params = CursorParams::with_midpoints(
             cfg.touchpad_cursor_sensitivity,
             cfg.touchpad_cursor_enabled,
+            cfg.touchpad_midpoint_x,
+            cfg.touchpad_midpoint_y,
         );
         let (fake_tx, fake_rx) = unbounded::<crate::gamepad::GamepadEvent>();
         let src = GamepadSource::fake(fake_rx);
@@ -440,6 +447,13 @@ fn execute_action(
         }
         KeyAction::MouseMove { dx, dy } => {
             let _ = mouse_sink.move_rel(*dx, *dy);
+        }
+        KeyAction::TouchpadClick { raw_x, raw_y, quadrant } => {
+            let _ = event_tx.send(EngineEvent::TouchpadClick {
+                raw_x: *raw_x,
+                raw_y: *raw_y,
+                quadrant: *quadrant,
+            });
         }
     }
 }

@@ -30,6 +30,8 @@ fn cfg_with_touchpad_tl_left_click() -> Config {
         macros: BTreeMap::new(),
         touchpad_cursor_enabled: true,
         touchpad_cursor_sensitivity: 1.5,
+        touchpad_midpoint_x: 960,
+        touchpad_midpoint_y: 540,
     }
 }
 

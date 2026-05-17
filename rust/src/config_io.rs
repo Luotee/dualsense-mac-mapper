@@ -71,6 +71,16 @@ impl ConfigDoc {
         self.raw["touchpad_cursor_sensitivity"] = Value::from(v);
     }
 
+    pub fn set_touchpad_midpoint_x(&mut self, v: u16) {
+        self.typed.touchpad_midpoint_x = v;
+        self.raw["touchpad_midpoint_x"] = Value::from(v);
+    }
+
+    pub fn set_touchpad_midpoint_y(&mut self, v: u16) {
+        self.typed.touchpad_midpoint_y = v;
+        self.raw["touchpad_midpoint_y"] = Value::from(v);
+    }
+
     /// Set min_press_ms without running validation.
     /// Callers that need the invariant enforced must call `validate()` afterwards.
     pub fn set_min_press_ms_unchecked(&mut self, v: [u32; 2]) {
@@ -130,6 +140,12 @@ fn migrate_touchpad_ids(typed: &mut Config, raw: &mut Value) {
     }
     if raw["touchpad_cursor_sensitivity"].is_null() {
         raw["touchpad_cursor_sensitivity"] = Value::from(typed.touchpad_cursor_sensitivity);
+    }
+    if raw["touchpad_midpoint_x"].is_null() {
+        raw["touchpad_midpoint_x"] = Value::from(typed.touchpad_midpoint_x);
+    }
+    if raw["touchpad_midpoint_y"].is_null() {
+        raw["touchpad_midpoint_y"] = Value::from(typed.touchpad_midpoint_y);
     }
 }
 

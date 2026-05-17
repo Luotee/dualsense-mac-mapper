@@ -41,19 +41,41 @@ function currentSvg() {
 export async function init() {
   await refresh();
   listen('config-changed', refresh);
-  listen('button-down', ev => suppressSynth(ev.id));
+  listen('button-down', ev => onPhysicalDown(ev.id));
   document.addEventListener('keydown', onKeyDown);
   document.addEventListener('keyup',   onKeyUp);
 }
 
-function suppressSynth(id) {
-  const key = keyByButtonId.get(Number(id));
+function onPhysicalDown(id) {
+  const numId = Number(id);
+  const key = keyByButtonId.get(numId);
   if (!key) return;
-  // Cancel any pending un-suppress and re-arm the timer so a held
-  // physical button keeps the synth suppressed for its whole duration.
+  // The synthesised keydown typically arrives at the JS event loop a
+  // few ms BEFORE the engine's Tauri 'button-down' event, so a pure
+  // forward-suppression set was racy — mirror would already have lit
+  // every OTHER button bound to the same key. Two complementary fixes
+  // here:
+  //
+  //   1. Retroactively clear any mirror-flashed presses on OTHER ids
+  //      that share this key. mappings.js's own 'button-down' handler
+  //      has already (or will shortly) flashed the *correct* physical
+  //      button, so removing the wrong ones from the DOM mid-animation
+  //      kills the spurious flash before the user can perceive it.
+  //   2. Arm a forward suppression window so a synth keydown that
+  //      arrives AFTER this event (the opposite race) is also skipped.
+  const ids = bindingsByKey.get(key) || [];
+  const svg = currentSvg();
+  if (svg) {
+    for (const otherId of ids) {
+      if (otherId !== numId) controller.clearPress(svg, otherId);
+    }
+  }
+  activeKeys.delete(key);
+  // Forward suppression: any keydown for this key in the next 250 ms
+  // is treated as the engine's synth.
   const prev = synthSuppressed.get(key);
   if (prev) clearTimeout(prev);
-  const h = setTimeout(() => synthSuppressed.delete(key), 180);
+  const h = setTimeout(() => synthSuppressed.delete(key), 250);
   synthSuppressed.set(key, h);
 }
 

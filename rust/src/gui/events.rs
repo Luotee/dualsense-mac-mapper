@@ -44,6 +44,10 @@ pub fn spawn<R: Runtime>(app: AppHandle<R>, engine: Handle) {
                         app.emit("activity", serde_json::json!({
                             "ts_ms": ts_ms, "kind": "macro-end", "name": name, "completed": completed
                         })),
+                    EngineEvent::TouchpadClick { raw_x, raw_y, quadrant } =>
+                        app.emit("touchpad-click", serde_json::json!({
+                            "raw_x": raw_x, "raw_y": raw_y, "quadrant": quadrant
+                        })),
                 };
             }
             std::thread::sleep(std::time::Duration::from_millis(8));

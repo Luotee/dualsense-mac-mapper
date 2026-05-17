@@ -20,10 +20,6 @@ use std::sync::Arc;
 use std::thread;
 use std::time::Duration;
 
-/// Mid-point of the 1920×1080 touchpad coordinate space — quadrant
-/// boundary for click position → button id.
-const TOUCHPAD_X_MID: u16 = 960;
-const TOUCHPAD_Y_MID: u16 = 540;
 /// Drop sub-2-pixel motion so a resting finger doesn't synthesise a
 /// drift. Anything strictly greater than this gets emitted.
 const CURSOR_JITTER_FLOOR: i32 = 1;
@@ -57,8 +53,8 @@ struct TouchpadState {
     prev_touchpad_btn: bool,
 }
 
-fn quadrant_for(x: u16, y: u16) -> u32 {
-    match (x < TOUCHPAD_X_MID, y < TOUCHPAD_Y_MID) {
+fn quadrant_for(x: u16, y: u16, mid_x: u16, mid_y: u16) -> u32 {
+    match (x < mid_x, y < mid_y) {
         (true,  true)  => QUAD_TL,
         (false, true)  => QUAD_TR,
         (true,  false) => QUAD_BL,
@@ -130,17 +126,20 @@ fn process_touchpad(
             } else {
                 None
             });
-        let q = match click_pos {
-            Some((x, y)) => quadrant_for(x, y),
-            None => QUAD_TL, // no finger info at all — pick a deterministic default
-        };
+        let mid_x = params.midpoint_x();
+        let mid_y = params.midpoint_y();
+        let (raw_x, raw_y) = click_pos.unwrap_or((mid_x, mid_y));
+        let q = quadrant_for(raw_x, raw_y, mid_x, mid_y);
         tracing::info!(
-            x = click_pos.map(|p| p.0).unwrap_or(0),
-            y = click_pos.map(|p| p.1).unwrap_or(0),
+            x = raw_x,
+            y = raw_y,
+            mid_x,
+            mid_y,
             quadrant = q,
             "touchpad click captured"
         );
         state.last_click_quadrant = Some(q);
+        let _ = tx.send(GamepadEvent::TouchpadClick { raw_x, raw_y, quadrant: q });
         let _ = tx.send(GamepadEvent::ButtonDown(q));
     } else if !cur.touchpad_btn && state.prev_touchpad_btn {
         if let Some(q) = state.last_click_quadrant.take() {

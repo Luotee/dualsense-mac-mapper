@@ -10,6 +10,9 @@ pub enum KeyAction {
     MousePress(MouseButton),
     MouseRelease(MouseButton),
     MouseMove { dx: i32, dy: i32 },
+    /// Pure diagnostic — engine forwards as a Tauri event so the GUI
+    /// can show a debug dot at the captured touchpad position.
+    TouchpadClick { raw_x: u16, raw_y: u16, quadrant: u32 },
 }
 
 pub struct Mapper {
@@ -62,6 +65,9 @@ impl Mapper {
                 self.update_trigger_virtuals(axis)
             }
             GamepadEvent::MouseDelta { dx, dy } => vec![KeyAction::MouseMove { dx, dy }],
+            GamepadEvent::TouchpadClick { raw_x, raw_y, quadrant } => {
+                vec![KeyAction::TouchpadClick { raw_x, raw_y, quadrant }]
+            }
         }
     }
 
@@ -189,6 +195,8 @@ mod tests {
             buttons, macros,
             touchpad_cursor_enabled: true,
             touchpad_cursor_sensitivity: 1.5,
+            touchpad_midpoint_x: 960,
+            touchpad_midpoint_y: 540,
         }
     }
 

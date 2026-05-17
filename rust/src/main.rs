@@ -301,6 +301,8 @@ fn list_buttons(cfg: Option<Config>) -> Result<()> {
                     println!("  [trig  ] id={axis:<3} v={value:+.2}     (trigger normalized)"),
                 GamepadEvent::MouseDelta { dx, dy } =>
                     println!("  [touch ] dx={dx:<+4} dy={dy:<+4}  (touchpad cursor)"),
+                GamepadEvent::TouchpadClick { raw_x, raw_y, quadrant } =>
+                    println!("  [tpclick] raw=({raw_x:<5},{raw_y:<5}) quadrant={quadrant}"),
             }
         }
         std::thread::sleep(std::time::Duration::from_millis(10));

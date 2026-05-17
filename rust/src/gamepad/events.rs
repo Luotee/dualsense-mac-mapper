@@ -17,4 +17,10 @@ pub enum GamepadEvent {
     /// mouse sink. Values are already scaled by
     /// `touchpad_cursor_sensitivity`.
     MouseDelta { dx: i32, dy: i32 },
+    /// Diagnostic — fires on every touchpad click rising edge,
+    /// alongside the regular `ButtonDown(quadrant)`. Carries the raw
+    /// finger coordinates so the GUI can render a debug dot at the
+    /// captured position and the user can verify the chosen quadrant
+    /// matches their intent.
+    TouchpadClick { raw_x: u16, raw_y: u16, quadrant: u32 },
 }

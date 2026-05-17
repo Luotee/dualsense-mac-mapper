@@ -202,6 +202,9 @@ const defaults = {
   stickpress: { r: 5 },
   // Stick wedge (donut quarter) params
   stickw:   { r_in: 10, r_out: 17, d: 3 },
+  // Touchpad quadrants — gap = centre-cross spacing between the 4
+  // bindable zones (matches the d-pad pentagon gap convention).
+  tpquad:   { gap: 1.5 },
 };
 
 let state = JSON.parse(JSON.stringify(defaults));
@@ -324,13 +327,24 @@ const groups = [
              `gap (between quarters) = d × √2 = <b>${gap.toFixed(2)}</b>`;
     },
   },
+  {
+    title: 'Touchpad quadrants', path: 'tpquad', fields: [
+      ['gap', 'centre gap', 0, 6, 0.1],
+    ],
+    derived: s => {
+      const halfW = (s.touchpad.w - s.tpquad.gap) / 2;
+      const halfH = (s.touchpad.h - s.tpquad.gap) / 2;
+      return `each quadrant = ${halfW.toFixed(2)} × ${halfH.toFixed(2)} (w × h)<br>` +
+             `outer-corner radius inherited from touchpad rx = <b>${s.touchpad.rx}</b>`;
+    },
+  },
 ];
 
 // ── Build side panel ──────────────────────────────────────────────────────
 const gc = document.getElementById('group-container');
 for (const g of groups) {
   const det = document.createElement('details');
-  det.open = ['Touchpad','Shoulders (L1 / R1)','Triggers (L2 / R2)','D-pad pentagons','Stick donut quarter'].includes(g.title);
+  det.open = ['Touchpad','Touchpad quadrants','Shoulders (L1 / R1)','Triggers (L2 / R2)','D-pad pentagons','Stick donut quarter'].includes(g.title);
   det.innerHTML = `
     <summary>${g.title}</summary>
     <div class="body-rows" data-path="${g.path}">
@@ -406,6 +420,7 @@ function generateExport() {
   lines.push('');
   lines.push('// ── Sprite geometry constants ─────────────────────────────');
   lines.push(`const TOUCHPAD = { x: ${fcs(s.touchpad.x)}, y: ${fcs(s.touchpad.y)}, w: ${fcs(s.touchpad.w)}, h: ${fcs(s.touchpad.h)}, rx: ${fcs(s.touchpad.rx)} };`);
+  lines.push(`const TOUCHPAD_QUAD_GAP = ${fcs(s.tpquad.gap)};`);
   lines.push(`const L_STICK  = { cx: ${fcs(s.lstick.cx)}, cy: ${fcs(s.lstick.cy)}, r: ${fcs(s.lstick.r)} };`);
   lines.push(`const R_STICK  = { cx: ${fcs(s.rstick.cx)}, cy: ${fcs(s.rstick.cy)}, r: ${fcs(s.rstick.r)} };`);
   lines.push('');
@@ -466,6 +481,21 @@ function mkPath(d, cls) {
   return p;
 }
 
+function mkTouchpadQuad(x, y, w, h, r, corner) {
+  const x1 = x + w, y1 = y + h;
+  switch (corner) {
+    case 'tl':
+      return `M ${x} ${y + r} A ${r} ${r} 0 0 1 ${x + r} ${y} L ${x1} ${y} L ${x1} ${y1} L ${x} ${y1} Z`;
+    case 'tr':
+      return `M ${x} ${y} L ${x1 - r} ${y} A ${r} ${r} 0 0 1 ${x1} ${y + r} L ${x1} ${y1} L ${x} ${y1} Z`;
+    case 'bl':
+      return `M ${x} ${y} L ${x1} ${y} L ${x1} ${y1} L ${x + r} ${y1} A ${r} ${r} 0 0 1 ${x} ${y1 - r} Z`;
+    case 'br':
+    default:
+      return `M ${x} ${y} L ${x1} ${y} L ${x1} ${y1 - r} A ${r} ${r} 0 0 1 ${x1 - r} ${y1} L ${x} ${y1} Z`;
+  }
+}
+
 function bindClass(kind) {
   return kind === 'key'   ? 'binding-key'
        : kind === 'macro' ? 'binding-macro'
@@ -520,9 +550,34 @@ function render() {
   // Body
   svg.appendChild(mkPath(BODY_PATH, 'body'));
 
-  // Touchpad
+  // Touchpad decorative rounded rect (visible through the centre-cross
+  // gap between the 4 quadrant zones).
   const tp = s.touchpad;
   svg.appendChild(mkRect(tp.x, tp.y, tp.w, tp.h, 'touchpad', tp.rx));
+
+  // Touchpad 4 quadrants — one rounded outer corner each.
+  {
+    const tq = s.tpquad;
+    const cx = tp.x + tp.w / 2;
+    const cy = tp.y + tp.h / 2;
+    const w  = tp.w / 2 - tq.gap / 2;
+    const h  = tp.h / 2 - tq.gap / 2;
+    const r  = tp.rx;
+    const leftX  = tp.x;
+    const rightX = cx + tq.gap / 2;
+    const topY   = tp.y;
+    const botY   = cy + tq.gap / 2;
+    const qcls = `hit ${bindClass(bindingKind)}`;
+    const quads = [
+      { x: leftX,  y: topY, corner: 'tl' },
+      { x: rightX, y: topY, corner: 'tr' },
+      { x: leftX,  y: botY, corner: 'bl' },
+      { x: rightX, y: botY, corner: 'br' },
+    ];
+    for (const q of quads) {
+      svg.appendChild(mkPath(mkTouchpadQuad(q.x, q.y, w, h, r, q.corner), qcls));
+    }
+  }
 
   // Shoulders + triggers
   const sh = s.shoulder, tr = s.trigger;

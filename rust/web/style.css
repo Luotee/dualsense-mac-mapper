@@ -228,6 +228,22 @@ code {
 .controller .binding-mouse   { fill: var(--mouse, #38bdf8); }
 .controller .binding-unbound { fill: var(--card); stroke: var(--muted); }
 
+/* Touchpad debug dot — shows the last captured touchpad click position
+   so the user can verify the raw (x, y) lines up with where they
+   actually touched. If the dot is offset, tune
+   touchpad_midpoint_x / _y in Settings → Touchpad. */
+.controller .touchpad-debug-dot {
+  fill: var(--yellow);
+  stroke: var(--bg);
+  stroke-width: 0.3;
+  pointer-events: none;
+  animation: touchpad-dot-fade 1200ms ease-out forwards;
+}
+@keyframes touchpad-dot-fade {
+  from { opacity: 0.9; }
+  to   { opacity: 0;   }
+}
+
 
 /* Live-press overlay: animated yellow ring */
 .controller .press-ring {

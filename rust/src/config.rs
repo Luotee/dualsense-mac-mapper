@@ -15,10 +15,16 @@ pub struct Config {
     pub touchpad_cursor_enabled: bool,
     #[serde(default = "default_touchpad_cursor_sensitivity")]
     pub touchpad_cursor_sensitivity: f32,
+    #[serde(default = "default_touchpad_midpoint_x")]
+    pub touchpad_midpoint_x: u16,
+    #[serde(default = "default_touchpad_midpoint_y")]
+    pub touchpad_midpoint_y: u16,
 }
 
 fn default_touchpad_cursor_enabled() -> bool { true }
 fn default_touchpad_cursor_sensitivity() -> f32 { 1.5 }
+fn default_touchpad_midpoint_x() -> u16 { 960 }
+fn default_touchpad_midpoint_y() -> u16 { 540 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct ButtonEntry {
@@ -129,6 +135,18 @@ impl Config {
             bail!(
                 "touchpad_cursor_sensitivity must be in [0.1, 10.0], got {}",
                 self.touchpad_cursor_sensitivity
+            );
+        }
+        if !(1..=4094).contains(&self.touchpad_midpoint_x) {
+            bail!(
+                "touchpad_midpoint_x must be in [1, 4094], got {}",
+                self.touchpad_midpoint_x
+            );
+        }
+        if !(1..=4094).contains(&self.touchpad_midpoint_y) {
+            bail!(
+                "touchpad_midpoint_y must be in [1, 4094], got {}",
+                self.touchpad_midpoint_y
             );
         }
         for id in VALID_BUTTON_IDS {
@@ -453,6 +471,8 @@ mod tests {
             macros: BTreeMap::new(),
             touchpad_cursor_enabled: true,
             touchpad_cursor_sensitivity: 1.5,
+            touchpad_midpoint_x: 960,
+            touchpad_midpoint_y: 540,
         }
     }
 
@@ -532,6 +552,8 @@ mod tests {
             macros: BTreeMap::new(),
             touchpad_cursor_enabled: true,
             touchpad_cursor_sensitivity: 1.5,
+            touchpad_midpoint_x: 960,
+            touchpad_midpoint_y: 540,
         }
     }
 

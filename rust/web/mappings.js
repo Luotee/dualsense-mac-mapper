@@ -81,6 +81,9 @@ function hookLiveHighlight() {
   listen('button-up', payload => {
     controller.clearPress(svgEl, payload.id);
   });
+  listen('touchpad-click', payload => {
+    controller.showTouchpadDot(svgEl, payload.raw_x, payload.raw_y);
+  });
 }
 
 function listenConfigChanged() {
