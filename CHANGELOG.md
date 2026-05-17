@@ -3,6 +3,48 @@
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/);
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.2.2] - 2026-05-18
+
+### Fixed
+
+- **Touchpad fill no longer flattens the trapezoid into a rect.**
+  v2.2.1 rendered the touchpad outer as a traced path, but the 4
+  quadrant hit zones (default-bound to mouse left, so always tinted)
+  used the bbox-based `mkTouchpadQuad` factory and overflowed the
+  trapezoid outline. Visually the touchpad collapsed back to a flat
+  rounded rectangle whenever any quad had a binding. Each quadrant
+  now renders as a real sub-path: the trapezoid ∩ that quadrant
+  region (minus a 1.5u cross-gap at the centre), computed via
+  shapely. New constant `TOUCHPAD_QUAD_PATHS` in
+  `controller_geom.generated.js`.
+- **Touchpad perimeter no longer wobbles.** The Q-curve midpoint
+  smoothing in v2.2.1 reconstructed the outline from a sparse 79-pt
+  polygon — fine for a single closed shape, but shapely's quadrant
+  intersection introduced new vertices on the cross-gap axes, and
+  re-smoothing those produced a low-frequency wave along the
+  trapezoid edge that read as "jagged". The touchpad outer, light
+  bar inner, and 4 quad sub-paths now emit dense polylines (~600
+  vertices) straight from the raw cv2 contour, with no
+  `approxPolyDP` and no Q-curve smoothing. Browser antialiasing
+  handles the visual smoothness; the four shapes now align
+  pixel-for-pixel at every shared edge.
+- **Keyboard mirror animates for generic `Alt` / `Shift` /
+  `Control` bindings.** `resolveKeyName` always reports the side
+  the physical press came from (`LAlt`, never plain `Alt`), so a
+  config entry with the generic modifier name silently produced no
+  animation even though the synth itself worked. The mirror's
+  `bindingsByKey` now expands generic modifiers to both side-
+  specific lookup keys and stores all keys lowercase, so a hand-
+  edited config with `Alt` / `lalt` / `LALT` matches a physical
+  `LAlt` press.
+
+### Removed
+
+- `mkTouchpadQuad` factory in `controller.js` — the 4 quadrants
+  are now plain `<path d="...">` reading from `TOUCHPAD_QUAD_PATHS`,
+  so the per-corner rect-with-one-rounded-corner construction is
+  gone.
+
 ## [2.2.1] - 2026-05-18
 
 ### Fixed

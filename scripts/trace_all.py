@@ -250,17 +250,21 @@ def trace(src_path: Path):
         left, right = midsorted[0], midsorted[1]
         fb_dict = {"triangle": top, "circle": right, "cross": bot, "square": left}
 
-    # Touchpad outer/inner — trace as Q-curve paths so the trapezoidal
-    # light-bar shape from the line drawing is preserved (the bbox-only
-    # variant collapsed it to a flat rectangle).
-    def smooth_to_path(c, eps_frac):
-        arc_ = cv2.arcLength(c, True)
-        eps_ = eps_frac * arc_
-        smooth = cv2.approxPolyDP(c, eps_, True).squeeze(1).astype(np.float64)
-        pts = smooth * scale + np.array([ox, oy])
-        return _smooth_polygon_to_qpath(pts)
+    # Touchpad outer/inner — emit dense polylines straight from the raw
+    # cv2 contour pixels. The 4 quad sub-paths (computed below) come
+    # from the SAME polygon, so outline and fill match pixel-for-pixel
+    # at the trapezoid boundary. Browser antialiasing handles smoothing.
+    def smooth_to_path(c, eps_frac):  # eps_frac kept for signature compat
+        raw = c.squeeze(1).astype(np.float64)
+        pts = raw * scale + np.array([ox, oy])
+        parts = [f"M {pts[0,0]:.2f} {pts[0,1]:.2f}"]
+        for x, y in pts[1:]:
+            parts.append(f"L {x:.2f} {y:.2f}")
+        parts.append("Z")
+        return " ".join(parts)
 
     tp_outer_rect = None
+    tp_quad_paths = None
     if touchpad_outer is not None:
         tp_outer_rect = {
             "x": round(tx(touchpad_outer["x"]), 2),
@@ -269,6 +273,47 @@ def trace(src_path: Path):
             "h": round(tr(touchpad_outer["h"]), 2),
             "path": smooth_to_path(touchpad_outer["c"], 0.001),
         }
+        # Compute 4 sub-paths = trapezoid ∩ quadrant region (with cross
+        # gap). Each sub-path is rendered as a dense polyline (M + many
+        # L commands) directly from cv2's raw contour pixels — no
+        # approxPolyDP, no Q-curve smoothing. Re-smoothing the polygon
+        # intersection vertices added a low-frequency wobble along the
+        # outline (each new shapely-introduced vertex broke the midpoint
+        # Q-curve continuity). The raw contour has ~600 vertices around
+        # the touchpad perimeter, so the polyline reads smooth.
+        from shapely.geometry import Polygon, box
+        raw_pts = touchpad_outer["c"].squeeze(1).astype(np.float64)
+        tp_view_pts = raw_pts * scale + np.array([ox, oy])
+        trapezoid = Polygon(tp_view_pts)
+        if not trapezoid.is_valid:
+            trapezoid = trapezoid.buffer(0)
+        cx_v = tp_outer_rect["x"] + tp_outer_rect["w"] / 2
+        cy_v = tp_outer_rect["y"] + tp_outer_rect["h"] / 2
+        gap = 1.5
+        regions = {
+            "tl": box(0, 0, cx_v - gap / 2, cy_v - gap / 2),
+            "tr": box(cx_v + gap / 2, 0, VIEWBOX_W, cy_v - gap / 2),
+            "bl": box(0, cy_v + gap / 2, cx_v - gap / 2, VIEWBOX_H),
+            "br": box(cx_v + gap / 2, cy_v + gap / 2, VIEWBOX_W, VIEWBOX_H),
+        }
+
+        def polyline_path(coords):
+            parts = [f"M {coords[0][0]:.2f} {coords[0][1]:.2f}"]
+            for x, y in coords[1:]:
+                parts.append(f"L {x:.2f} {y:.2f}")
+            parts.append("Z")
+            return " ".join(parts)
+
+        tp_quad_paths = {}
+        for k_, region in regions.items():
+            sub = trapezoid.intersection(region)
+            if sub.is_empty:
+                tp_quad_paths[k_] = None
+                continue
+            xs, ys = sub.exterior.xy
+            coords = list(zip(list(xs)[:-1], list(ys)[:-1]))
+            tp_quad_paths[k_] = polyline_path(coords)
+
     tp_inner_rect = None
     if tp_inner is not None:
         tp_inner_rect = {
@@ -400,6 +445,7 @@ def trace(src_path: Path):
         "l2r2_proposed": l2r2,
         "touchpad_outer": tp_outer_rect,
         "touchpad_inner": tp_inner_rect,
+        "touchpad_quad_paths": tp_quad_paths,
         "dpad_arms_rect": [rect(a) for a in dpad_arms],
         "dpad_arms": dpad_arm_paths,
         "face_buttons": fb_dict or [circle(c) for c in face_buttons],

@@ -107,6 +107,16 @@ def main():
                  f"w: {tp_inner['w']}, h: {tp_inner['h']}, rx: 3 }};")
     lines.append(f"export const LIGHT_BAR_INNER_PATH =\n  '{tp_inner['path']}';")
     lines.append("")
+    lines.append("// Touchpad quadrant paths — trapezoid ∩ each quadrant region,")
+    lines.append("// minus a 1.5u cross-gap at centre. Drop-in replacement for")
+    lines.append("// the bbox-based mkTouchpadQuad — quads now follow the real")
+    lines.append("// touchpad outline so binding fill has no jagged edges.")
+    tq = g["touchpad_quad_paths"]
+    lines.append("export const TOUCHPAD_QUAD_PATHS = {")
+    for k in ("tl", "tr", "bl", "br"):
+        lines.append(f"  {k}: '{tq[k]}',")
+    lines.append("};")
+    lines.append("")
     lines.append("// D-pad arms — 4 traced pentagon paths, one per direction")
     lines.append("export const DPAD_ARM_PATHS = {")
     for d in ("up", "down", "left", "right"):

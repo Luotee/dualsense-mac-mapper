@@ -37,6 +37,7 @@ import {
   TOUCHPAD_OUTER_PATH,
   LIGHT_BAR_INNER,
   LIGHT_BAR_INNER_PATH,
+  TOUCHPAD_QUAD_PATHS,
   DPAD_ARM_PATHS,
   FACE_BUTTONS,
   L_STICK, R_STICK,
@@ -248,11 +249,13 @@ export function render(parent, bindings) {
         break;
       }
       case 'touchpad_quad': {
-        // Each quadrant fills the touchpad rounded rect with ONE outer
-        // corner curved (matching the pad's rx) and three inner corners
-        // sharp, so the four quadrants together rebuild the rounded
-        // touchpad outline with a cross-shaped gap in the middle.
-        shape = mkTouchpadQuad(ns, e.geo, `hit ${cls}`);
+        // Each quadrant is a sub-path of the traced trapezoid intersected
+        // with its quadrant region (minus a 1.5u cross-gap at centre).
+        // Follows the real touchpad outline so binding fill has no jagged
+        // edges along the trapezoid border.
+        shape = document.createElementNS(ns, 'path');
+        shape.setAttribute('d', TOUCHPAD_QUAD_PATHS[e.geo.corner]);
+        shape.setAttribute('class', `hit ${cls}`);
         break;
       }
       case 'circle': {
@@ -493,34 +496,4 @@ function mkCircle(ns, cx, cy, r, cls) {
   return c;
 }
 
-/**
- * Rectangle with exactly one rounded corner (the "outer" corner of a
- * touchpad quadrant). The other three corners are sharp so adjacent
- * quadrants share straight edges across the centre gap and the four
- * quadrants together rebuild the pad's rounded outer outline.
- *
- * `geo` shape:
- *   { x, y, w, h, r, corner: 'tl' | 'tr' | 'bl' | 'br' }
- */
-function mkTouchpadQuad(ns, geo, cls) {
-  const { x, y, w, h, r, corner } = geo;
-  const path = (() => {
-    const x1 = x + w, y1 = y + h;
-    switch (corner) {
-      case 'tl':
-        return `M ${x} ${y + r} A ${r} ${r} 0 0 1 ${x + r} ${y} L ${x1} ${y} L ${x1} ${y1} L ${x} ${y1} Z`;
-      case 'tr':
-        return `M ${x} ${y} L ${x1 - r} ${y} A ${r} ${r} 0 0 1 ${x1} ${y + r} L ${x1} ${y1} L ${x} ${y1} Z`;
-      case 'bl':
-        return `M ${x} ${y} L ${x1} ${y} L ${x1} ${y1} L ${x + r} ${y1} A ${r} ${r} 0 0 1 ${x} ${y1 - r} Z`;
-      case 'br':
-      default:
-        return `M ${x} ${y} L ${x1} ${y} L ${x1} ${y1 - r} A ${r} ${r} 0 0 1 ${x1 - r} ${y1} L ${x} ${y1} Z`;
-    }
-  })();
-  const p = document.createElementNS(ns, 'path');
-  p.setAttribute('d',     path);
-  p.setAttribute('class', cls);
-  return p;
-}
 
