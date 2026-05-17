@@ -3,6 +3,35 @@
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/);
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.2] - 2026-05-17
+
+### Fixed
+
+- **D-pad pentagon apex angles are now strictly 45° and gaps are
+  uniform.** v1.1.1 picked R_shoulder and half_w independently so the
+  apex sides came out at arbitrary slopes and the gap between
+  adjacent pentagons varied. The parametrisation now enforces
+  `R_shoulder = R_inner + half_w`, which makes the apex side of
+  every pentagon lie on a line of slope −1 (or its 90°-rotated
+  equivalent), so adjacent pentagons' apex sides are parallel and
+  the gap between every pair is uniformly `R_inner * √2`.
+- **Stick wedges are trapezoids with 45° sides instead of arcs.**
+  The arc-based quarters from v1.1.1 produced visually non-parallel
+  boundaries between adjacent quarters (each boundary was a radius,
+  which converged to the centre). They now share the same
+  parallel-gap geometry as the d-pad pentagons: flat outer base,
+  flat inner base, two 45° side edges. Adjacent trapezoids' diagonal
+  sides lie on parallel lines so the gap is uniform along the
+  whole shared boundary.
+- **Unbound wedges show a dashed outline.** v1.1.1 hid the unbound
+  hit zones entirely (`stroke: none`); on the four-stick-directions
+  case where nothing is bound the user couldn't see there were
+  buttons at all. Unbound wedges now carry a thin dashed `--muted`
+  stroke so the hit zone is discoverable while still reading as
+  "not bound" (no fill).
+
+[1.1.2]: https://github.com/Luotee/dualsense-mac-mapper/releases/tag/v1.1.2
+
 ## [1.1.1] - 2026-05-17
 
 ### Fixed

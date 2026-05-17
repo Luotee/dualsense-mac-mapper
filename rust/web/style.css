@@ -210,9 +210,14 @@ code {
 }
 .controller .wedge.binding-key   { stroke: var(--accent); }
 .controller .wedge.binding-macro { stroke: var(--macro); }
+/* Unbound wedges are transparent inside but keep a thin dashed outline
+   so the user can still see where each hit zone lives — without it,
+   four unbound stick directions read as "no buttons here". */
 .controller .wedge.binding-unbound {
   fill-opacity: 0;
-  stroke: none;
+  stroke: var(--muted);
+  stroke-dasharray: 1.5 1.5;
+  stroke-width: 0.5;
 }
 .controller .wedge:hover { fill-opacity: 0.6; }
 

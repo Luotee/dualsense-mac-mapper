@@ -354,19 +354,22 @@ function mkCircle(ns, cx, cy, r, cls) {
  * @returns {SVGPathElement}
  */
 function mkArrow(ns, cx, cy, dir, cls) {
-  // "Label" pentagon: a flat outer base + two parallel sides + a
-  // tapered apex pointing INWARD toward the d-pad centre. Matches the
-  // user's hand sketch in the v1.1.1 review — four tag-shaped buttons
-  // arranged in a + around an empty centre, no underlying cross sprite.
+  // "Label" pentagon: flat outer base + two parallel sides + a tapered
+  // apex pointing INWARD toward the d-pad centre. The apex sides are
+  // strictly 45°, and the parametrisation enforces
+  // `R_shoulder = R_inner + half_w`. Under this constraint the apex
+  // side of UP and the adjacent apex side of RIGHT lie on parallel
+  // lines (y = -x ± R_inner), so the gap between every pair of
+  // adjacent pentagons is uniformly `R_inner * √2`.
   //
   //         ┌──────┐     <- outer base (R_outer from d-pad centre)
-  //         │      │
-  //          \    /      <- shoulders (R_shoulder)
-  //            v         <- apex pointing inward (R_inner)
-  const R_outer    = 13;  // flat base far edge, from d-pad centre
-  const R_shoulder = 6;   // where the parallel sides start tapering in
-  const R_inner    = 2;   // apex tip, closest point to d-pad centre
-  const half_w     = 5;   // half-width of the body
+  //         │      │     <- parallel vertical sides (R_outer → R_shoulder)
+  //          \    /      <- 45° apex sides
+  //            v         <- apex tip (R_inner)
+  const R_inner    = 3;    // apex tip, closest point to d-pad centre
+  const half_w     = 5;    // half-width of the body
+  const R_shoulder = R_inner + half_w; // = 8, enforces 45° apex sides
+  const R_outer    = 14;   // flat base far edge, from d-pad centre
 
   const up = [
     [-half_w, -R_outer],     // outer base left
@@ -395,10 +398,13 @@ function mkArrow(ns, cx, cy, dir, cls) {
 }
 
 /**
- * Donut quarter hit zone around a stick well. Inner radius hugs the
- * stick well ring; outer radius reaches into the live-press area.
- * Spans 90° per direction. The inner stick_press circle (L3/R3) sits
- * concentric inside this and is rendered after, so it stays on top.
+ * Trapezoid hit zone around a stick well. Outer base is flat
+ * (perpendicular to the direction), inner base is flat and closer to
+ * the stick well, the two side edges are strictly 45° lines. Adjacent
+ * trapezoids' diagonal edges lie on parallel lines, so the gap
+ * between every pair of adjacent quarters is uniformly `g * √2`
+ * along the diagonal — same parallel-gap geometry the d-pad pentagon
+ * uses (`mkArrow`).
  *
  * @param {string} ns
  * @param {number} cx   - Stick centre X
@@ -408,31 +414,33 @@ function mkArrow(ns, cx, cy, dir, cls) {
  * @returns {SVGPathElement}
  */
 function mkQuarter(ns, cx, cy, dir, cls) {
-  const r_in  = 10;  // just outside the stick-well ring (r=9)
-  const r_out = 16;  // outer reach
+  const r_in  = 10;   // inner base, just outside the stick-well ring (r=9)
+  const r_out = 17;   // outer base, far edge
+  const g     = 2;    // perpendicular gap half-width along the diagonals
+  const k     = g * Math.SQRT2 / 2;  // chord offset to push the diagonals in
 
-  // SVG angle convention: 0° = +x, 90° = +y (down), so "up" centres
-  // on −90° (i.e., 270°). Each quarter spans 84° (±42° around its
-  // direction's centre) instead of a clean 90° — leaves a small gap
-  // between adjacent quarters so the four directions read as
-  // separate buttons even when all four are bound to the same colour.
-  const centre = { right: 0, down: 90, left: 180, up: 270 }[dir];
-  const a0 = (centre - 42) * Math.PI / 180;
-  const a1 = (centre + 42) * Math.PI / 180;
+  // Canonical "up" trapezoid in stick-local coordinates.
+  // Outer corners sit at x = ±(r_out - k); inner corners at x = ±(r_in - k).
+  // The side from (r_out - k, -r_out) to (r_in - k, -r_in) has slope −1
+  // (since Δy = r_out − r_in, Δx = −(r_out − r_in)), i.e. 45°.
+  const up = [
+    [-(r_out - k), -r_out],  // outer-left
+    [ (r_out - k), -r_out],  // outer-right
+    [ (r_in  - k), -r_in ],  // inner-right
+    [-(r_in  - k), -r_in ],  // inner-left
+  ];
+  const map = {
+    up:    ([x, y]) => [x,  y],
+    down:  ([x, y]) => [x, -y],
+    left:  ([x, y]) => [y,  x],
+    right: ([x, y]) => [-y, x],
+  }[dir];
 
-  const o0 = [cx + r_out * Math.cos(a0), cy + r_out * Math.sin(a0)];
-  const o1 = [cx + r_out * Math.cos(a1), cy + r_out * Math.sin(a1)];
-  const i1 = [cx + r_in  * Math.cos(a1), cy + r_in  * Math.sin(a1)];
-  const i0 = [cx + r_in  * Math.cos(a0), cy + r_in  * Math.sin(a0)];
-
-  // 90° arc → large-arc flag 0; outer arc CW (sweep 1), inner CCW (0).
-  const d = [
-    `M ${o0[0]} ${o0[1]}`,
-    `A ${r_out} ${r_out} 0 0 1 ${o1[0]} ${o1[1]}`,
-    `L ${i1[0]} ${i1[1]}`,
-    `A ${r_in}  ${r_in}  0 0 0 ${i0[0]} ${i0[1]}`,
-    'Z',
-  ].join(' ');
+  const pts = up
+    .map(map)
+    .map(([dx, dy]) => `${cx + dx} ${cy + dy}`)
+    .join(' L ');
+  const d = `M ${pts} Z`;
 
   const p = document.createElementNS(ns, 'path');
   p.setAttribute('d',     d);
