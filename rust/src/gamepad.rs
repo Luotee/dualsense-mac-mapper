@@ -75,6 +75,15 @@ pub fn trigger_axis_index(a: Axis) -> Option<u32> {
 /// anything >0.5 or <-0.5 as fully pressed.
 const DPAD_HAT_THRESHOLD: f32 = 0.5;
 
+/// Periodic re-scan interval for "is any gamepad still connected?".
+///
+/// Iron rule #11 (v1.2.0): gilrs's `EventType::Disconnected` is not
+/// reliable on Windows for Bluetooth pads that silently lose link.
+/// We poll `is_connected()` on every known pad every SCAN_PERIOD_MS
+/// inside `GamepadSource::poll` and emit `Connected`/`Disconnected`
+/// transitions ourselves.
+pub(crate) const SCAN_PERIOD_MS: u64 = 500;
+
 /// Internal implementation: either a real gilrs backend or a fake channel for tests.
 enum GamepadSourceInner {
     Real {
@@ -87,6 +96,13 @@ enum GamepadSourceInner {
         /// the user re-pairs once and the controller is "always there") would
         /// otherwise never register in the GUI.
         initial_scan_done: bool,
+        /// `Instant` of the last `is_connected()` re-scan. Updated whenever
+        /// the scan body runs. Initialised to "long ago" so the first poll
+        /// after construction always triggers a scan.
+        last_scan: std::time::Instant,
+        /// Cached "is any pad connected" answer from the last scan. Transitions
+        /// between cached and current drive `Connected` / `Disconnected` emit.
+        any_connected: bool,
     },
     /// Test-only variant — inject events without a real controller.
     #[doc(hidden)]
@@ -105,6 +121,9 @@ impl GamepadSource {
                 dpad_x_state: 0,
                 dpad_y_state: 0,
                 initial_scan_done: false,
+                last_scan: std::time::Instant::now()
+                    - std::time::Duration::from_millis(SCAN_PERIOD_MS + 1),
+                any_connected: false,
             },
         })
     }
@@ -119,7 +138,8 @@ impl GamepadSource {
     /// Drain pending events and translate; non-blocking.
     pub fn poll(&mut self, out: &mut Vec<GamepadEvent>) {
         match &mut self.inner {
-            GamepadSourceInner::Real { gilrs, dpad_x_state, dpad_y_state, initial_scan_done } => {
+            GamepadSourceInner::Real { gilrs, dpad_x_state, dpad_y_state,
+                                         initial_scan_done, last_scan, any_connected } => {
                 if !*initial_scan_done {
                     // Synth a Connected event for any pad already known to gilrs
                     // at construction time (Bluetooth re-pair case). Filter on
@@ -136,14 +156,53 @@ impl GamepadSource {
                         tracing::info!(name = %pad.name(),
                             "pre-connected gamepad detected at startup");
                         out.push(GamepadEvent::Connected);
+                        *any_connected = true;
                     }
                     *initial_scan_done = true;
                 }
+
+                // Periodic connection re-scan (Iron rule #11). gilrs's own
+                // EventType::Disconnected is not reliable on Windows for BT
+                // pads that silently lose link; recompute "is any pad live"
+                // every SCAN_PERIOD_MS and emit the missing transitions.
+                if last_scan.elapsed() >= std::time::Duration::from_millis(SCAN_PERIOD_MS) {
+                    *last_scan = std::time::Instant::now();
+                    let mut now_connected = false;
+                    for (_id, pad) in gilrs.gamepads() {
+                        if pad.is_connected() { now_connected = true; break; }
+                    }
+                    if now_connected != *any_connected {
+                        if now_connected {
+                            tracing::info!("periodic scan: pad re-appeared, emitting Connected");
+                            out.push(GamepadEvent::Connected);
+                        } else {
+                            tracing::info!("periodic scan: pad vanished, emitting Disconnected");
+                            out.push(GamepadEvent::Disconnected);
+                        }
+                        *any_connected = now_connected;
+                    }
+                }
+
                 while let Some(Event { event, .. }) = gilrs.next_event() {
                     tracing::debug!(?event, "gilrs event");
                     match event {
-                        EventType::Connected => out.push(GamepadEvent::Connected),
-                        EventType::Disconnected => out.push(GamepadEvent::Disconnected),
+                        EventType::Connected => {
+                            *any_connected = true;
+                            out.push(GamepadEvent::Connected);
+                        }
+                        EventType::Disconnected => {
+                            // Recompute rather than blindly flip — multiple
+                            // pads may be attached; only emit Disconnected if
+                            // none remain.
+                            let mut still = false;
+                            for (_id, pad) in gilrs.gamepads() {
+                                if pad.is_connected() { still = true; break; }
+                            }
+                            *any_connected = still;
+                            if !still {
+                                out.push(GamepadEvent::Disconnected);
+                            }
+                        }
                         EventType::ButtonPressed(b, _) => {
                             if let Some(i) = button_index(b) {
                                 tracing::info!(button = ?b, id = i, "ButtonDown");
@@ -283,5 +342,16 @@ mod tests {
         // below 0.0; gilrs reports DPad axes as -1/0/+1, so anywhere in
         // (0.0, 1.0) is fine; 0.5 is the obvious middle.
         assert!(DPAD_HAT_THRESHOLD > 0.0 && DPAD_HAT_THRESHOLD < 1.0);
+    }
+
+    #[test]
+    fn gamepad_scan_period_is_under_one_second() {
+        // The "always connected" bug fix (Iron rule #11) depends on the
+        // periodic re-scan firing fast enough that a BT silent-drop is
+        // visible to the user within roughly one frame of UI delay.
+        // Anything >=1s feels broken; anything <100ms wastes CPU walking
+        // gilrs's gamepad list.
+        assert!(super::SCAN_PERIOD_MS >= 100);
+        assert!(super::SCAN_PERIOD_MS < 1000);
     }
 }
