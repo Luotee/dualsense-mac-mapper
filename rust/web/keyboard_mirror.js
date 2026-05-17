@@ -1,39 +1,29 @@
 // Mirror keyboard-press visual feedback onto the in-app controller SVG.
 //
-// When the GUI window has focus and the user presses a key that is bound
-// to a button (entry.type === 'key' && entry.value === resolved-name),
-// flash the matching button(s). Releasing the key clears the flash.
+// Defer-and-check 30ms: on keydown, schedule a mirror flash 30ms later.
+// If any 'button-down' for an id ∈ bindingsByKey[name] arrives in that
+// window, the keydown is treated as our own engine synth and skipped.
+// Otherwise it's a real keyboard input and flashes every bound id.
 //
-// Suppression rules — all of these skip the flash:
-//   - ev.repeat (key auto-repeat) — would re-trigger the flash 30×/s
-//   - capture_state.isCaptureActive() — a bind popup or step editor is
-//     listening for the same key; flashing would imply the binding is
-//     already applied before the user clicked Save
-//   - ev.target is INPUT / SELECT / TEXTAREA / contenteditable — user is
-//     typing into a form (Settings number fields, macro inline forms)
+// 30ms is below 2 frames @ 60Hz so the deferral is imperceptible. It's
+// big enough to cover IPC arrival jitter (~10-20ms) between SendInput
+// → OS → window keydown and HID worker → channel → Tauri emit → JS.
 //
-// keyup is intentionally NOT gated on the same suppression rules: if the
-// user pressed `x` outside a form and then moved focus into one before
-// releasing, we still need to clear the flash we set.
+// Suppression rules unchanged: ev.repeat, capture active, form fields.
 
 import { invoke, listen } from './ipc.js';
 import { resolveKeyName } from './key_capture.js';
 import { isCaptureActive } from './capture_state.js';
 import * as controller from './controller.js';
 
-let bindingsByKey   = new Map();   // key-name (string) → array of numeric button ids
-let keyByButtonId   = new Map();   // numeric id → key-name
-const activeKeys    = new Set();   // canonical names currently lit up
-// Keys recently synthesised by our own engine (in response to a
-// physical gamepad press). The OS will deliver these as keydown events
-// to the focused window; without suppression keyboard_mirror would
-// double-flash every button bound to the same key (e.g. pressing
-// D-pad ← would also flash L-stick ← if both bind to "Left").
-const synthSuppressed = new Map();  // key → setTimeout handle
+const DEFER_MS = 30;
 
-// Always re-query — mappings.js::reload calls controller.render() which
-// clears #controller-host and appends a fresh <svg>, so any cached
-// reference to the SVG element is stale the moment a binding changes.
+let bindingsByKey       = new Map();   // key-name → array of numeric button ids
+let keyByButtonId       = new Map();   // numeric id → key-name
+const activeKeys        = new Set();   // canonical names currently lit
+const recentButtonDowns = new Map();   // numeric id → performance.now() of last 'button-down'
+const pendingKeyDowns   = new Map();   // key name → setTimeout handle
+
 function currentSvg() {
   return document.querySelector('#controller-host svg.controller');
 }
@@ -41,42 +31,17 @@ function currentSvg() {
 export async function init() {
   await refresh();
   listen('config-changed', refresh);
-  listen('button-down', ev => onPhysicalDown(ev.id));
+  listen('button-down', ev => recentButtonDowns.set(Number(ev.id), performance.now()));
   document.addEventListener('keydown', onKeyDown);
   document.addEventListener('keyup',   onKeyUp);
-}
-
-function onPhysicalDown(id) {
-  const numId = Number(id);
-  const key = keyByButtonId.get(numId);
-  if (!key) return;
-  // The synthesised keydown typically arrives at the JS event loop a
-  // few ms BEFORE the engine's Tauri 'button-down' event, so a pure
-  // forward-suppression set was racy — mirror would already have lit
-  // every OTHER button bound to the same key. Two complementary fixes
-  // here:
-  //
-  //   1. Retroactively clear any mirror-flashed presses on OTHER ids
-  //      that share this key. mappings.js's own 'button-down' handler
-  //      has already (or will shortly) flashed the *correct* physical
-  //      button, so removing the wrong ones from the DOM mid-animation
-  //      kills the spurious flash before the user can perceive it.
-  //   2. Arm a forward suppression window so a synth keydown that
-  //      arrives AFTER this event (the opposite race) is also skipped.
-  const ids = bindingsByKey.get(key) || [];
-  const svg = currentSvg();
-  if (svg) {
-    for (const otherId of ids) {
-      if (otherId !== numId) controller.clearPress(svg, otherId);
+  // GC stale entries every 1s. Anything older than 1s can't possibly
+  // match a future keydown's 30ms window.
+  setInterval(() => {
+    const cutoff = performance.now() - 1000;
+    for (const [id, ts] of recentButtonDowns) {
+      if (ts < cutoff) recentButtonDowns.delete(id);
     }
-  }
-  activeKeys.delete(key);
-  // Forward suppression: any keydown for this key in the next 250 ms
-  // is treated as the engine's synth.
-  const prev = synthSuppressed.get(key);
-  if (prev) clearTimeout(prev);
-  const h = setTimeout(() => synthSuppressed.delete(key), 250);
-  synthSuppressed.set(key, h);
+  }, 1000);
 }
 
 async function refresh() {
@@ -114,25 +79,35 @@ function onKeyDown(ev) {
   if (shouldSkip(ev)) return;
   const name = resolveKeyName(ev);
   if (!name) return;
-  // Synth from our own engine — the physical button's flashPress
-  // already lit the correct hit zone via mappings.js's 'button-down'
-  // listener. Mirroring would double-light every OTHER button bound
-  // to the same key.
-  if (synthSuppressed.has(name)) return;
-  const ids = bindingsByKey.get(name);
-  if (!ids || ids.length === 0) return;
-  const svg = currentSvg();
-  if (!svg) return;
-  activeKeys.add(name);
-  for (const id of ids) controller.flashPress(svg, id);
+  const prev = pendingKeyDowns.get(name);
+  if (prev) clearTimeout(prev);
+  const t = setTimeout(() => {
+    pendingKeyDowns.delete(name);
+    // 30ms window check — any synth-bound 'button-down' arrived?
+    const cutoff = performance.now() - (DEFER_MS + 5);
+    const ids = bindingsByKey.get(name) || [];
+    const isSynth = ids.some(id => {
+      const ts = recentButtonDowns.get(id);
+      return ts !== undefined && ts >= cutoff;
+    });
+    if (isSynth) return;
+    const svg = currentSvg();
+    if (!svg) return;
+    activeKeys.add(name);
+    for (const id of ids) controller.flashPress(svg, id);
+  }, DEFER_MS);
+  pendingKeyDowns.set(name, t);
 }
 
 function onKeyUp(ev) {
   const name = resolveKeyName(ev);
-  if (!name || !activeKeys.has(name)) return;
+  if (!name) return;
+  // Cancel any pending mirror if the key was released before the defer fired.
+  const pending = pendingKeyDowns.get(name);
+  if (pending) { clearTimeout(pending); pendingKeyDowns.delete(name); }
+  if (!activeKeys.has(name)) return;
   activeKeys.delete(name);
-  const ids = bindingsByKey.get(name);
-  if (!ids) return;
+  const ids = bindingsByKey.get(name) || [];
   const svg = currentSvg();
   if (!svg) return;
   for (const id of ids) controller.clearPress(svg, id);
