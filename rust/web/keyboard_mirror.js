@@ -21,12 +21,17 @@ import { resolveKeyName } from './key_capture.js';
 import { isCaptureActive } from './capture_state.js';
 import * as controller from './controller.js';
 
-let svgEl = null;
 let bindingsByKey = new Map();   // key-name (string) → array of numeric button ids
 const activeKeys  = new Set();    // canonical names currently lit up
 
-export async function init(svg) {
-  svgEl = svg;
+// Always re-query — mappings.js::reload calls controller.render() which
+// clears #controller-host and appends a fresh <svg>, so any cached
+// reference to the SVG element is stale the moment a binding changes.
+function currentSvg() {
+  return document.querySelector('#controller-host svg.controller');
+}
+
+export async function init() {
   await refresh();
   listen('config-changed', refresh);
   document.addEventListener('keydown', onKeyDown);
@@ -66,8 +71,10 @@ function onKeyDown(ev) {
   if (!name) return;
   const ids = bindingsByKey.get(name);
   if (!ids || ids.length === 0) return;
+  const svg = currentSvg();
+  if (!svg) return;
   activeKeys.add(name);
-  for (const id of ids) controller.flashPress(svgEl, id);
+  for (const id of ids) controller.flashPress(svg, id);
 }
 
 function onKeyUp(ev) {
@@ -76,5 +83,7 @@ function onKeyUp(ev) {
   activeKeys.delete(name);
   const ids = bindingsByKey.get(name);
   if (!ids) return;
-  for (const id of ids) controller.clearPress(svgEl, id);
+  const svg = currentSvg();
+  if (!svg) return;
+  for (const id of ids) controller.clearPress(svg, id);
 }

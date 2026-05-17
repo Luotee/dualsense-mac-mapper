@@ -45,5 +45,4 @@ await mappings.init();
 await macros.init();
 await settings.init();
 await activity.init();
-const svgEl = document.querySelector('#controller-host svg.controller');
-if (svgEl) await kbdMirror.init(svgEl);
+await kbdMirror.init();
