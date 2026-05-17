@@ -31,6 +31,10 @@ const BODY_PATH =
 
 // Touchpad shape: rounded rect centred at (120, 44).
 const TOUCHPAD = { x: 101, y: 36, w: 38, h: 16, rx: 5 };
+// Gap between adjacent touchpad quadrants — matches the visual spacing
+// pattern used by the d-pad pentagons and stick wedges. Tune here if a
+// designer wants a tighter or wider cross-line.
+const TOUCHPAD_QUAD_GAP = 1.5;
 
 // Stick well centres
 const L_STICK = { cx: 84,  cy: 82, r: 9 };
@@ -58,13 +62,11 @@ function elements() {
     el(4,  'meta_rect',  { rx: 82,  ry: 38, w: 7,  h: 3 },  'Share'),
     el(6,  'meta_rect',  { rx: 151, ry: 38, w: 7,  h: 3 },  'Options'),
 
-    // Touchpad — 4 quadrant hit zones over the decorative rect (drawn
-    // below in render()). The whole-pad physical press fires the
-    // quadrant id (25..=28) the finger was in at click-down.
-    el(25, 'touchpad_quad', { x: 101, y: 36,  w: 19, h: 8 }, 'TP-TL'),
-    el(26, 'touchpad_quad', { x: 120, y: 36,  w: 19, h: 8 }, 'TP-TR'),
-    el(27, 'touchpad_quad', { x: 101, y: 44,  w: 19, h: 8 }, 'TP-BL'),
-    el(28, 'touchpad_quad', { x: 120, y: 44,  w: 19, h: 8 }, 'TP-BR'),
+    // Touchpad — 4 quadrant hit zones with a centre-cross gap matching
+    // the d-pad / stick-wedge spacing convention. Each quadrant shrinks
+    // by GAP/2 along the centre axes; the decorative pad rect drawn in
+    // render() shows through the gap so the visual centre-line reads.
+    ...touchpadQuadElements(),
 
     // PS logo button (centre, below touchpad)
     el(5,  'circle',     { cx: 120, cy: 62, r: 3 },          'PS'),
@@ -113,6 +115,24 @@ function elements() {
 
 function el(id, kind, geo, label) {
   return { id, kind, geo, label };
+}
+
+function touchpadQuadElements() {
+  const g = TOUCHPAD_QUAD_GAP;
+  const cx = TOUCHPAD.x + TOUCHPAD.w / 2;
+  const cy = TOUCHPAD.y + TOUCHPAD.h / 2;
+  const w = TOUCHPAD.w / 2 - g / 2;
+  const h = TOUCHPAD.h / 2 - g / 2;
+  const leftX  = TOUCHPAD.x;
+  const rightX = cx + g / 2;
+  const topY   = TOUCHPAD.y;
+  const botY   = cy + g / 2;
+  return [
+    el(25, 'touchpad_quad', { x: leftX,  y: topY, w, h }, 'TP-TL'),
+    el(26, 'touchpad_quad', { x: rightX, y: topY, w, h }, 'TP-TR'),
+    el(27, 'touchpad_quad', { x: leftX,  y: botY, w, h }, 'TP-BL'),
+    el(28, 'touchpad_quad', { x: rightX, y: botY, w, h }, 'TP-BR'),
+  ];
 }
 
 // ─── Binding → CSS class ──────────────────────────────────────────────────────
@@ -190,10 +210,12 @@ export function render(parent, bindings) {
         break;
       }
       case 'touchpad_quad': {
-        // Rectangular quadrant overlay on the touchpad. No rx — the
-        // outer decorative rect provides the rounded border; sharp
-        // inner corners make the cross-line divider read cleanly.
-        shape = mkRect(ns, e.geo.x, e.geo.y, e.geo.w, e.geo.h, `hit touchpad-quad ${cls}`);
+        // Rectangular quadrant. The centre-gap (set in
+        // touchpadQuadElements) leaves the decorative pad visible
+        // between the 4 zones; the binding-* class fills each
+        // quadrant the same way face buttons get filled.
+        shape = mkRect(ns, e.geo.x, e.geo.y, e.geo.w, e.geo.h, `hit ${cls}`);
+        shape.setAttribute('rx', '0.5');
         break;
       }
       case 'circle':

@@ -47,6 +47,12 @@ const QUAD_BR: u32 = 28;
 #[derive(Default)]
 struct TouchpadState {
     last_finger_pos: Option<(u16, u16)>,
+    /// Position recorded at the moment finger 0 first became active in
+    /// the current contact. The quadrant for the touchpad click uses
+    /// this — the user's *intent* is where they put their finger, not
+    /// where the finger has drifted to by the time the physical click
+    /// switch fires (the press motion shifts the contact point).
+    touchdown_pos: Option<(u16, u16)>,
     last_click_quadrant: Option<u32>,
     prev_touchpad_btn: bool,
 }
@@ -74,6 +80,7 @@ fn process_touchpad(
             None => {
                 // Touch-down — record the start position without emitting.
                 state.last_finger_pos = Some((cur.finger0_x, cur.finger0_y));
+                state.touchdown_pos = Some((cur.finger0_x, cur.finger0_y));
             }
             Some((lx, ly)) => {
                 let dx_raw = cur.finger0_x as i32 - lx as i32;
@@ -81,8 +88,12 @@ fn process_touchpad(
                 if dx_raw.abs() > CURSOR_TELEPORT_GUARD
                     || dy_raw.abs() > CURSOR_TELEPORT_GUARD
                 {
-                    // Stale touch-down frame — re-anchor silently.
+                    // Stale touch-down frame — re-anchor silently. The
+                    // previous touchdown was garbage; replace it with the
+                    // new real coordinates so the next click sees the
+                    // settled position.
                     state.last_finger_pos = Some((cur.finger0_x, cur.finger0_y));
+                    state.touchdown_pos = Some((cur.finger0_x, cur.finger0_y));
                 } else {
                     let moved = dx_raw.abs() > CURSOR_JITTER_FLOOR
                         || dy_raw.abs() > CURSOR_JITTER_FLOOR;
@@ -94,26 +105,41 @@ fn process_touchpad(
                             let _ = tx.send(GamepadEvent::MouseDelta { dx, dy });
                         }
                         state.last_finger_pos = Some((cur.finger0_x, cur.finger0_y));
+                        // touchdown_pos intentionally NOT updated on
+                        // motion — it represents the user's intent at
+                        // touch-down, not the drifted current position.
                     }
                 }
             }
         }
     } else {
-        // Finger lifted — clear the reference so the next touch-down
+        // Finger lifted — clear references so the next touch-down
         // doesn't synthesise a jump from the old position.
         state.last_finger_pos = None;
+        state.touchdown_pos = None;
     }
 
-    // Click: rising edge captures the quadrant; falling edge releases
-    // the same id we captured (so a drag across boundaries does not
-    // re-emit).
+    // Click: rising edge captures the quadrant using the touch-down
+    // position (the user's intent), not the click-frame instantaneous
+    // position. Falling edge releases the same id (so a drag across
+    // quadrant boundaries does not re-emit).
     if cur.touchpad_btn && !state.prev_touchpad_btn {
-        let q = if cur.finger0_active {
-            quadrant_for(cur.finger0_x, cur.finger0_y)
-        } else {
-            // No finger at click-down (rare): default to TL.
-            QUAD_TL
+        let click_pos = state.touchdown_pos
+            .or_else(|| if cur.finger0_active {
+                Some((cur.finger0_x, cur.finger0_y))
+            } else {
+                None
+            });
+        let q = match click_pos {
+            Some((x, y)) => quadrant_for(x, y),
+            None => QUAD_TL, // no finger info at all — pick a deterministic default
         };
+        tracing::info!(
+            x = click_pos.map(|p| p.0).unwrap_or(0),
+            y = click_pos.map(|p| p.1).unwrap_or(0),
+            quadrant = q,
+            "touchpad click captured"
+        );
         state.last_click_quadrant = Some(q);
         let _ = tx.send(GamepadEvent::ButtonDown(q));
     } else if !cur.touchpad_btn && state.prev_touchpad_btn {

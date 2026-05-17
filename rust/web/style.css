@@ -228,20 +228,6 @@ code {
 .controller .binding-mouse   { fill: var(--mouse, #38bdf8); }
 .controller .binding-unbound { fill: var(--card); stroke: var(--muted); }
 
-/* Touchpad quadrants — semi-transparent overlay over the decorative pad
-   so the four quadrants read as four bindable cells without obliterating
-   the touchpad outline below. */
-.controller .touchpad-quad {
-  fill-opacity: 0.5;
-  stroke: var(--border);
-  stroke-width: 0.4;
-}
-.controller .touchpad-quad.binding-unbound {
-  fill-opacity: 0;
-  stroke: var(--muted);
-  stroke-dasharray: 1 1;
-}
-.controller .touchpad-quad:hover { fill-opacity: 0.7; }
 
 /* Live-press overlay: animated yellow ring */
 .controller .press-ring {
