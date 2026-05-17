@@ -170,14 +170,47 @@ visibly differs. If a `turbo: true` feature ever ships, gate it
 behind explicit config opt-in with a jittered interval — never a
 constant tick.
 
+## Versioning rules
+
+Project follows [Semantic Versioning](https://semver.org/) with these
+project-specific clarifications. Picking the wrong axis is a
+release-flow bug; halt and reclassify before committing.
+
+- **MAJOR (`X.0.0`)** — backwards-incompatible behaviour. Examples:
+  - Dropping support for a previously-supported pad (e.g. v2.0.0
+    removes gilrs → non-DualSense pads no longer work).
+  - Breaking the on-disk `dualsense-mapper.json` schema (renamed
+    fields, removed keys, changed enum values).
+  - Removing or renaming a CLI flag.
+  - Changing the semantics of an existing binding type (e.g. if
+    `Binding::Key` started ignoring the modifier).
+  - Replacing the gamepad event source / abstraction layer.
+- **MINOR (`X.Y.0`)** — new functionality, backwards compatible.
+  Examples:
+  - New IPC command added to `commands.rs`.
+  - New binding type (`Binding::Touchpad`) added to the enum.
+  - New optional config field with a default.
+  - New keyboard mapping support (e.g. punctuation keys).
+- **PATCH (`X.Y.Z`)** — bug fix only. No new feature, no schema
+  change. Examples:
+  - Fixing a stuck KEYDOWN.
+  - Fixing the d-pad stick quarter rotation map.
+  - Fixing the macro UI refresh trigger.
+- **Pre-1.0** (`0.X.Y`) — semver suspended; MINOR may break.
+
+When deciding between MINOR and MAJOR, ask: *will any user's existing
+config file or hardware setup stop working after the upgrade?* If
+yes, MAJOR.
+
 ## Release flow — files that must move together
 
-A version bump touches **two** files in the release commit:
+A version bump touches **three** files in the release commit:
 
 1. `rust/Cargo.toml` — `[package] version` field
-2. `CHANGELOG.md` — new top-level `## [X.Y.Z] - YYYY-MM-DD` heading
+2. `rust/tauri.conf.json` — `"version"` field (must match Cargo.toml)
+3. `CHANGELOG.md` — new top-level `## [X.Y.Z] - YYYY-MM-DD` heading
 
-Bumping fewer than two is a release-flow bug; halt. There is no
+Bumping fewer than three is a release-flow bug; halt. There is no
 mechanical gate yet (no `tests/test_version_consistency.py`); a CI
 addition is welcome but until then, reviewers enforce the rule by
 eye on every release PR.
