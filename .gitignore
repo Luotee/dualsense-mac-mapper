@@ -14,3 +14,13 @@ docs/superpowers/
 Thumbs.db
 *.swp
 *.swo
+
+memory/
+
+# Trace pipeline intermediate outputs (scripts/trace_*.py +
+# gen_controller_constants.py write here). controller_geom.generated.js
+# is the only artefact we track; the JSON inputs to it are local-only.
+dist/
+
+# Python script caches
+scripts/__pycache__/

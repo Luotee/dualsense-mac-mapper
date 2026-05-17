@@ -52,17 +52,76 @@ cargo build --release                         # native Linux binary
 
 ## Cross-compile to Windows (canonical ship target)
 
+There are TWO build profiles. Pick the right one:
+
+### CLI build (no GUI) — minimal sanity check only
+
 ```bash
-sudo apt install -y mingw-w64
-rustup target add x86_64-pc-windows-gnu
 cd rust
 cargo build --release --target x86_64-pc-windows-gnu
 # → target/x86_64-pc-windows-gnu/release/dualsense-mapper.exe  (~2 MB)
 ```
 
+This builds the `--cli` path WITHOUT the Tauri GUI feature. The exe is
+small but USELESS for end-user testing — double-clicking it opens a
+console window, not the GUI. Do NOT ship this. Use it only for
+verifying the CLI engine compiles cleanly.
+
+### GUI build (canonical ship target — what the user actually wants)
+
+```bash
+cd rust
+WEBVIEW2_STATIC=true cargo xwin build --release \
+  --target x86_64-pc-windows-msvc --features gui
+# → target/x86_64-pc-windows-msvc/release/dualsense-mapper.exe  (~11 MB)
+```
+
+This is the ONLY exe to deliver to the user.
+
+- `--features gui` enables the Tauri frontend (engine + web/).
+- `cargo xwin` builds for the MSVC target from Linux. `cargo-xwin`
+  must be installed (`cargo install cargo-xwin`); it fetches the
+  Windows SDK + MSVC libs into `~/.cache/cargo-xwin/xwin/` on first
+  run.
+- `WEBVIEW2_STATIC=true` statically links the WebView2 loader so the
+  exe has **no DLL dependency**. Without this env var, the exe needs
+  `WebView2Loader.dll` next to it and double-clicking on a fresh
+  machine fails.
+- Targeting `windows-msvc` (not `windows-gnu`) avoids shipping
+  `libgcc_s_seh-1.dll`, `libstdc++-6.dll`, `libwinpthread-1.dll`.
+
 The Windows binary needs **only the exe + a `dualsense-mapper.json`
-config next to it**. Ship those two files; everything else is dev
-artefacts.
+config next to it**. No DLLs. Ship those two files; everything else
+is dev artefacts.
+
+### Test-drop convention (Linux/WSL dev host)
+
+After every fresh GUI build the user wants for testing, copy ONLY the
+exe to a versioned folder under the Windows-visible Downloads path:
+
+```bash
+DEST="/mnt/c/Users/Joe96/Downloads/dualsense-mapper-vX.Y.Z-<tag>"
+mkdir -p "$DEST"
+cp rust/target/x86_64-pc-windows-msvc/release/dualsense-mapper.exe "$DEST/"
+```
+
+**Do NOT bundle `config.example.json`.** The exe auto-generates a
+fresh `dualsense-mapper.json` next to itself on first run (see
+`Config::load_or_create`). Copying an extra example file is redundant
+and gives the user two configs to reason about.
+
+`<tag>` is one of: `test` (final), `dev-test` (pre-release dev build),
+or a feature name like `silhouette-test`. The folder pattern matches
+prior releases (`dualsense-mapper-v2.1.0-test/`, etc.) so the user
+can find it by version. Do NOT skip this step when finishing a
+feature — the user expects the exe in Downloads, not just a
+SendUserFile attachment.
+
+### What "I built the exe" means without these steps
+
+It means you built the CLI binary, not the GUI binary. That is not
+useful to the user. Re-read this section before assuming a one-liner
+`cargo build` is enough.
 
 ## Iron rules for the Rust source
 
