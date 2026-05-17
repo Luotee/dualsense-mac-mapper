@@ -185,7 +185,7 @@ const BODY_PATH =
   'M 50 30 Q 38 30 36 50 Q 32 80 62 92 Q 75 102 95 102 ' +
   'L 145 102 Q 165 102 178 92 Q 208 80 204 50 Q 202 30 190 30 L 50 30 Z';
 
-// ── Default values (matches v1.1.2 controller.js) ─────────────────────────
+// ── Default values (matches v2.1.0 rust/web/controller.js geometry) ──────
 const defaults = {
   // Touchpad
   touchpad: { x: 101, y: 36, w: 38, h: 16, rx: 5 },
@@ -201,7 +201,7 @@ const defaults = {
   // Face buttons: 4 circles in a diamond
   face:     { cx: 184, cy: 58, spacing: 8, r: 4 },
   // D-pad cluster center + pentagon params
-  dpad:     { cx: 59, cy: 57, R_inner: 4, half_w: 3.5, R_outer: 16 },
+  dpad:     { cx: 59, cy: 57, R_inner: 2.70, half_w: 3.40, R_outer: 13.20 },
   // L stick well
   lstick:   { cx: 84,  cy: 82, r: 9 },
   // R stick well
@@ -209,7 +209,7 @@ const defaults = {
   // L3/R3 inner press circle radius (shared)
   stickpress: { r: 5 },
   // Stick wedge (donut quarter) params
-  stickw:   { r_in: 10, r_out: 17, d: 3 },
+  stickw:   { r_in: 11.60, r_out: 15.10, d: 1.70 },
   // Touchpad quadrants — gap = centre-cross spacing between the 4
   // bindable zones (matches the d-pad pentagon gap convention).
   tpquad:   { gap: 1.5 },
