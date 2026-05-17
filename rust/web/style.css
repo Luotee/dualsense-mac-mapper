@@ -210,6 +210,7 @@ code {
 }
 .controller .wedge.binding-key   { stroke: var(--accent); }
 .controller .wedge.binding-macro { stroke: var(--macro); }
+.controller .wedge.binding-mouse { stroke: var(--mouse, #38bdf8); }
 /* Unbound wedges are transparent inside but keep a thin dashed outline
    so the user can still see where each hit zone lives — without it,
    four unbound stick directions read as "no buttons here". */
@@ -224,7 +225,23 @@ code {
 /* Binding kind colours */
 .controller .binding-key     { fill: var(--accent); }
 .controller .binding-macro   { fill: var(--macro); }
+.controller .binding-mouse   { fill: var(--mouse, #38bdf8); }
 .controller .binding-unbound { fill: var(--card); stroke: var(--muted); }
+
+/* Touchpad quadrants — semi-transparent overlay over the decorative pad
+   so the four quadrants read as four bindable cells without obliterating
+   the touchpad outline below. */
+.controller .touchpad-quad {
+  fill-opacity: 0.5;
+  stroke: var(--border);
+  stroke-width: 0.4;
+}
+.controller .touchpad-quad.binding-unbound {
+  fill-opacity: 0;
+  stroke: var(--muted);
+  stroke-dasharray: 1 1;
+}
+.controller .touchpad-quad:hover { fill-opacity: 0.7; }
 
 /* Live-press overlay: animated yellow ring */
 .controller .press-ring {
@@ -291,7 +308,31 @@ code {
 .chip        { font-family: var(--mono); font-size: 11px; padding: 2px 7px; border-radius: 3px; }
 .chip-key    { background: var(--soft);       color: var(--accent); }
 .chip-macro  { background: var(--macro-soft); color: var(--macro); }
+.chip-mouse  { background: rgba(56, 189, 248, 0.12); color: var(--mouse, #38bdf8); }
 .chip-mute   { color: var(--muted); font-size: 10px; }
+
+/* Bind-popup Mouse picker — 5-button grid (Left/Middle/Right/Wheel up/down). */
+.mouse-picker {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 6px;
+  padding: 4px 0;
+}
+.mouse-opt {
+  font-size: 12px;
+  padding: 6px 10px;
+  border-radius: 4px;
+  border: 1px solid var(--border);
+  background: var(--card);
+  color: var(--text);
+  cursor: pointer;
+}
+.mouse-opt:hover { background: var(--soft); }
+.mouse-opt.on {
+  background: rgba(56, 189, 248, 0.15);
+  border-color: var(--mouse, #38bdf8);
+  color: var(--mouse, #38bdf8);
+}
 
 /* ── Bind popup ───────────────────────────────────────────────────────────── */
 /* Dock the popup to the right edge so the controller diagram on the left

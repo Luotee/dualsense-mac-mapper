@@ -61,6 +61,16 @@ impl ConfigDoc {
         self.raw["log_events"] = Value::from(v);
     }
 
+    pub fn set_touchpad_cursor_enabled(&mut self, v: bool) {
+        self.typed.touchpad_cursor_enabled = v;
+        self.raw["touchpad_cursor_enabled"] = Value::from(v);
+    }
+
+    pub fn set_touchpad_cursor_sensitivity(&mut self, v: f32) {
+        self.typed.touchpad_cursor_sensitivity = v;
+        self.raw["touchpad_cursor_sensitivity"] = Value::from(v);
+    }
+
     /// Set min_press_ms without running validation.
     /// Callers that need the invariant enforced must call `validate()` afterwards.
     pub fn set_min_press_ms_unchecked(&mut self, v: [u32; 2]) {

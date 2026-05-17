@@ -58,6 +58,14 @@ function elements() {
     el(4,  'meta_rect',  { rx: 82,  ry: 38, w: 7,  h: 3 },  'Share'),
     el(6,  'meta_rect',  { rx: 151, ry: 38, w: 7,  h: 3 },  'Options'),
 
+    // Touchpad — 4 quadrant hit zones over the decorative rect (drawn
+    // below in render()). The whole-pad physical press fires the
+    // quadrant id (25..=28) the finger was in at click-down.
+    el(25, 'touchpad_quad', { x: 101, y: 36,  w: 19, h: 8 }, 'TP-TL'),
+    el(26, 'touchpad_quad', { x: 120, y: 36,  w: 19, h: 8 }, 'TP-TR'),
+    el(27, 'touchpad_quad', { x: 101, y: 44,  w: 19, h: 8 }, 'TP-BL'),
+    el(28, 'touchpad_quad', { x: 120, y: 44,  w: 19, h: 8 }, 'TP-BR'),
+
     // PS logo button (centre, below touchpad)
     el(5,  'circle',     { cx: 120, cy: 62, r: 3 },          'PS'),
 
@@ -113,6 +121,7 @@ function kindClass(kind) {
   switch (kind) {
     case 'key':     return 'binding-key';
     case 'macro':   return 'binding-macro';
+    case 'mouse':   return 'binding-mouse';
     case 'unbound': return 'binding-unbound';
     default:        return 'binding-unbound';
   }
@@ -178,6 +187,13 @@ export function render(parent, bindings) {
       case 'meta_rect': {
         shape = mkRect(ns, e.geo.rx, e.geo.ry, e.geo.w, e.geo.h, `hit ${cls}`);
         shape.setAttribute('rx', '2');
+        break;
+      }
+      case 'touchpad_quad': {
+        // Rectangular quadrant overlay on the touchpad. No rx — the
+        // outer decorative rect provides the rounded border; sharp
+        // inner corners make the cross-line divider read cleanly.
+        shape = mkRect(ns, e.geo.x, e.geo.y, e.geo.w, e.geo.h, `hit touchpad-quad ${cls}`);
         break;
       }
       case 'circle':

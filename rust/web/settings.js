@@ -22,6 +22,8 @@ async function reload() {
     min_press_ms: cfg.min_press_ms,
     tick_jitter_ms: cfg.tick_jitter_ms,
     log_events: cfg.log_events,
+    touchpad_cursor_enabled: cfg.touchpad_cursor_enabled ?? true,
+    touchpad_cursor_sensitivity: cfg.touchpad_cursor_sensitivity ?? 1.5,
   };
 }
 
@@ -64,6 +66,19 @@ function render() {
           <span>to</span>
           <input id="f-jitter-hi" type="number" min="0" max="50" value="${current.tick_jitter_ms[1]}">
         </div>
+      </div>
+    </div>
+
+    <div class="settings-section">
+      <h3>Touchpad</h3>
+      <div class="field field-toggle">
+        <label for="f-touchpad-cursor">Cursor movement</label>
+        <input id="f-touchpad-cursor" type="checkbox" ${current.touchpad_cursor_enabled ? 'checked' : ''}>
+      </div>
+      <div class="field">
+        <label for="f-touchpad-sens">Cursor sensitivity <span class="hint">(0.1–10.0)</span></label>
+        <input id="f-touchpad-sens" type="number" step="0.1" min="0.1" max="10"
+               value="${current.touchpad_cursor_sensitivity}">
       </div>
     </div>
 
@@ -130,6 +145,8 @@ async function save() {
       parseInt(document.getElementById('f-jitter-hi').value, 10),
     ],
     log_events: document.getElementById('f-log-events').checked,
+    touchpad_cursor_enabled: document.getElementById('f-touchpad-cursor').checked,
+    touchpad_cursor_sensitivity: parseFloat(document.getElementById('f-touchpad-sens').value),
   };
   try {
     await invoke('set_settings', { settings: payload });

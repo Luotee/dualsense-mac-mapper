@@ -247,7 +247,14 @@ pub struct Settings {
     pub min_press_ms: [u32; 2],
     pub tick_jitter_ms: [u32; 2],
     pub log_events: bool,
+    #[serde(default = "default_touchpad_cursor_enabled")]
+    pub touchpad_cursor_enabled: bool,
+    #[serde(default = "default_touchpad_cursor_sensitivity")]
+    pub touchpad_cursor_sensitivity: f32,
 }
+
+fn default_touchpad_cursor_enabled() -> bool { true }
+fn default_touchpad_cursor_sensitivity() -> f32 { 1.5 }
 
 impl Settings {
     /// Spec §9 — the factory defaults that ship with the example config.
@@ -258,6 +265,8 @@ impl Settings {
             min_press_ms: [8, 25],
             tick_jitter_ms: [0, 3],
             log_events: true,
+            touchpad_cursor_enabled: true,
+            touchpad_cursor_sensitivity: 1.5,
         }
     }
 }
@@ -289,6 +298,8 @@ pub fn set_settings_impl(
     doc.set_min_press_ms_unchecked(s.min_press_ms);
     doc.set_tick_jitter_ms_unchecked(s.tick_jitter_ms);
     doc.set_log_events(s.log_events);
+    doc.set_touchpad_cursor_enabled(s.touchpad_cursor_enabled);
+    doc.set_touchpad_cursor_sensitivity(s.touchpad_cursor_sensitivity);
     doc.validate()?;
     write_atomic(config_path, &doc)?;
     let mut live = engine.config_write();
@@ -297,6 +308,14 @@ pub fn set_settings_impl(
     live.min_press_ms = s.min_press_ms;
     live.tick_jitter_ms = s.tick_jitter_ms;
     live.log_events = s.log_events;
+    live.touchpad_cursor_enabled = s.touchpad_cursor_enabled;
+    live.touchpad_cursor_sensitivity = s.touchpad_cursor_sensitivity;
+    drop(live);
+    // Update the HID worker's atomics so cursor changes take effect on
+    // the next decoded frame without an engine restart.
+    let params = engine.cursor_params();
+    params.set_enabled(s.touchpad_cursor_enabled);
+    params.set_sensitivity(s.touchpad_cursor_sensitivity);
     Ok(())
 }
 

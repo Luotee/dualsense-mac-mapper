@@ -26,6 +26,7 @@ export function open(options) {
       <div class="seg" role="tablist">
         <button class="seg-item" data-seg="key">Key</button>
         <button class="seg-item" data-seg="macro">Macro</button>
+        <button class="seg-item" data-seg="mouse">Mouse</button>
         <button class="seg-item" data-seg="unbound">Unbound</button>
       </div>
 
@@ -46,6 +47,7 @@ export function open(options) {
   let segment = entry.type || 'unbound';
   let capturedKey = segment === 'key'   ? (entry.value ?? null) : null;
   let chosenMacro = segment === 'macro' ? (entry.value ?? null) : null;
+  let chosenMouse = segment === 'mouse' ? (entry.value ?? 'left') : 'left';
 
   const errorEl  = root.querySelector('.bp-error');
   const editorEl = root.querySelector('.bp-editor');
@@ -134,6 +136,34 @@ export function open(options) {
       editorEl.appendChild(sel);
     }
 
+    if (segment === 'mouse') {
+      const grid = document.createElement('div');
+      grid.className = 'mouse-picker';
+      const opts = [
+        { value: 'left',       label: 'Left' },
+        { value: 'middle',     label: 'Middle' },
+        { value: 'right',      label: 'Right' },
+        { value: 'wheel-up',   label: 'Wheel ↑' },
+        { value: 'wheel-down', label: 'Wheel ↓' },
+      ];
+      for (const o of opts) {
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'mouse-opt';
+        btn.dataset.value = o.value;
+        btn.textContent = o.label;
+        if (chosenMouse === o.value) btn.classList.add('on');
+        btn.addEventListener('click', () => {
+          chosenMouse = o.value;
+          grid.querySelectorAll('.mouse-opt').forEach(b =>
+            b.classList.toggle('on', b.dataset.value === chosenMouse)
+          );
+        });
+        grid.appendChild(btn);
+      }
+      editorEl.appendChild(grid);
+    }
+
     if (segment === 'unbound') {
       const m = document.createElement('div');
       m.className = 'hint';
@@ -164,6 +194,8 @@ export function open(options) {
     } else if (segment === 'macro') {
       if (!chosenMacro) { show('Pick a macro, or define one in the Macros tab.'); return; }
       entryOut = { label: options.label, type: 'macro', value: chosenMacro };
+    } else if (segment === 'mouse') {
+      entryOut = { label: options.label, type: 'mouse', value: chosenMouse };
     } else {
       entryOut = { label: options.label, type: 'unbound' };
     }
