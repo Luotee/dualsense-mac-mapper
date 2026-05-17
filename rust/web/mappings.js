@@ -14,6 +14,17 @@ export async function init() {
   hookLiveHighlight();
   listenConfigChanged();
   renderChipList();
+
+  const btn = document.getElementById('btn-disconnect');
+  if (btn) {
+    btn.addEventListener('click', async () => {
+      try {
+        await invoke('disconnect_gamepad');
+      } catch (e) {
+        console.error('disconnect_gamepad failed:', e);
+      }
+    });
+  }
 }
 
 async function reload() {
