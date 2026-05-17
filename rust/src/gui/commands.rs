@@ -25,6 +25,8 @@ use std::path::PathBuf;
 
 #[cfg(feature = "gui")]
 use tauri::State;
+#[cfg(feature = "gui")]
+use tauri::Emitter as _;
 
 /// Return the current live config.
 ///
@@ -43,12 +45,15 @@ pub fn get_config(engine: State<'_, Handle>) -> Result<Config, String> {
 #[cfg_attr(feature = "gui", tauri::command)]
 #[cfg(feature = "gui")]
 pub fn set_binding(
+    app: tauri::AppHandle,
     engine: State<'_, Handle>,
     config_path: State<'_, PathBuf>,
     id: u32,
     entry: ButtonEntry,
 ) -> Result<(), String> {
-    set_binding_impl(&*engine, &config_path, id, entry).map_err(|e| format!("{e:#}"))
+    set_binding_impl(&*engine, &config_path, id, entry).map_err(|e| format!("{e:#}"))?;
+    let _ = app.emit("config-changed", serde_json::json!({"source": "ipc"}));
+    Ok(())
 }
 
 // ─── Pure *_impl helpers (always compiled, no Tauri dependency) ──────────────
@@ -88,12 +93,15 @@ pub fn set_binding_impl(
 #[cfg_attr(feature = "gui", tauri::command)]
 #[cfg(feature = "gui")]
 pub fn set_macro(
+    app: tauri::AppHandle,
     engine: State<'_, Handle>,
     config_path: State<'_, PathBuf>,
     name: String,
     def: MacroDef,
 ) -> Result<(), String> {
-    set_macro_impl(&*engine, &config_path, name, def).map_err(|e| format!("{e:#}"))
+    set_macro_impl(&*engine, &config_path, name, def).map_err(|e| format!("{e:#}"))?;
+    let _ = app.emit("config-changed", serde_json::json!({"source": "ipc"}));
+    Ok(())
 }
 
 /// Pure implementation of `set_macro` callable without `tauri::State`.
@@ -120,11 +128,14 @@ pub fn set_macro_impl(
 #[cfg_attr(feature = "gui", tauri::command)]
 #[cfg(feature = "gui")]
 pub fn delete_macro(
+    app: tauri::AppHandle,
     engine: State<'_, Handle>,
     config_path: State<'_, PathBuf>,
     name: String,
 ) -> Result<(), String> {
-    delete_macro_impl(&*engine, &config_path, &name).map_err(|e| format!("{e:#}"))
+    delete_macro_impl(&*engine, &config_path, &name).map_err(|e| format!("{e:#}"))?;
+    let _ = app.emit("config-changed", serde_json::json!({"source": "ipc"}));
+    Ok(())
 }
 
 /// Pure implementation of `delete_macro` callable without `tauri::State`.
@@ -169,12 +180,15 @@ pub fn delete_macro_impl(
 #[cfg_attr(feature = "gui", tauri::command)]
 #[cfg(feature = "gui")]
 pub fn rename_macro(
+    app: tauri::AppHandle,
     engine: State<'_, Handle>,
     config_path: State<'_, PathBuf>,
     old: String,
     new: String,
 ) -> Result<(), String> {
-    rename_macro_impl(&*engine, &config_path, &old, &new).map_err(|e| format!("{e:#}"))
+    rename_macro_impl(&*engine, &config_path, &old, &new).map_err(|e| format!("{e:#}"))?;
+    let _ = app.emit("config-changed", serde_json::json!({"source": "ipc"}));
+    Ok(())
 }
 
 /// Pure implementation of `rename_macro` callable without `tauri::State`.
@@ -253,11 +267,14 @@ impl Settings {
 #[cfg_attr(feature = "gui", tauri::command)]
 #[cfg(feature = "gui")]
 pub fn set_settings(
+    app: tauri::AppHandle,
     engine: State<'_, Handle>,
     config_path: State<'_, PathBuf>,
     settings: Settings,
 ) -> Result<(), String> {
-    set_settings_impl(&*engine, &config_path, settings).map_err(|e| format!("{e:#}"))
+    set_settings_impl(&*engine, &config_path, settings).map_err(|e| format!("{e:#}"))?;
+    let _ = app.emit("config-changed", serde_json::json!({"source": "ipc"}));
+    Ok(())
 }
 
 /// Pure implementation of `set_settings` callable without `tauri::State`.
@@ -287,10 +304,13 @@ pub fn set_settings_impl(
 #[cfg_attr(feature = "gui", tauri::command)]
 #[cfg(feature = "gui")]
 pub fn reset_settings(
+    app: tauri::AppHandle,
     engine: State<'_, Handle>,
     config_path: State<'_, PathBuf>,
 ) -> Result<(), String> {
-    reset_settings_impl(&*engine, &config_path).map_err(|e| format!("{e:#}"))
+    reset_settings_impl(&*engine, &config_path).map_err(|e| format!("{e:#}"))?;
+    let _ = app.emit("config-changed", serde_json::json!({"source": "ipc"}));
+    Ok(())
 }
 
 /// Pure implementation of `reset_settings` callable without `tauri::State`.
