@@ -38,6 +38,9 @@ const QUAD_TL: u32 = 25;
 const QUAD_TR: u32 = 26;
 const QUAD_BL: u32 = 27;
 const QUAD_BR: u32 = 28;
+/// Sentinel value emitted in `GamepadEvent::TouchpadHover.quadrant`
+/// when the finger lifts. Out of band — valid quadrant ids are 25..=28.
+const HOVER_QUADRANT_NONE: u32 = 255;
 
 /// Per-worker touchpad tracking. Reset on each new device connect.
 #[derive(Default)]
@@ -92,7 +95,7 @@ fn process_touchpad_hover<F: FnMut(GamepadEvent)>(
         }
     } else if state.last_hover_quadrant.is_some() {
         state.last_hover_quadrant = None;
-        emit(GamepadEvent::TouchpadHover { raw_x: 0, raw_y: 0, quadrant: 255 });
+        emit(GamepadEvent::TouchpadHover { raw_x: 0, raw_y: 0, quadrant: HOVER_QUADRANT_NONE });
     }
 }
 
@@ -490,6 +493,23 @@ mod tests {
             GamepadEvent::TouchpadHover { quadrant, .. } => Some(*quadrant),
             _ => None,
         }).last().unwrap();
-        assert_eq!(last_quadrant, 255, "lift should emit sentinel quadrant 255");
+        assert_eq!(last_quadrant, HOVER_QUADRANT_NONE, "lift should emit sentinel quadrant");
+    }
+
+    #[test]
+    fn hover_lift_then_reentry_emits_again() {
+        let mut state = TouchpadState::default();
+        let params = CursorParams::default();
+        let mut emitted: Vec<GamepadEvent> = Vec::new();
+        // Enter TR
+        process_touchpad_hover(true, 1500, 200, &mut state, &params, |ev| emitted.push(ev));
+        // Lift
+        process_touchpad_hover(false,    0,   0, &mut state, &params, |ev| emitted.push(ev));
+        // Re-enter same quadrant TR → must re-emit (proves dedupe state was reset)
+        process_touchpad_hover(true, 1500, 200, &mut state, &params, |ev| emitted.push(ev));
+        let hovers: Vec<_> = emitted.iter()
+            .filter(|e| matches!(e, GamepadEvent::TouchpadHover { .. }))
+            .collect();
+        assert_eq!(hovers.len(), 3, "expected 3 emits: enter TR, sentinel, re-enter TR");
     }
 }
