@@ -470,3 +470,45 @@ pub fn set_ui_prefs(
 pub fn get_app_version() -> &'static str {
     env!("CARGO_PKG_VERSION")
 }
+
+/// Tauri command: open a URL in the OS default browser.
+///
+/// The webview itself does not navigate `<a target="_blank">` links —
+/// CSP `default-src 'self'` blocks it and Tauri 2 does not ship a
+/// shell-open default in `withGlobalTauri`. Frontend intercepts anchor
+/// clicks and calls this command. Only http:/https: URLs accepted to
+/// avoid `file:`/`javascript:` smuggling.
+#[cfg(feature = "gui")]
+#[tauri::command]
+pub fn open_url(url: String) -> Result<(), String> {
+    if !(url.starts_with("http://") || url.starts_with("https://")) {
+        return Err(format!("refusing to open non-http(s) URL: {url}"));
+    }
+    open_external_url(&url).map_err(|e| format!("{e:#}"))
+}
+
+#[cfg(feature = "gui")]
+fn open_external_url(url: &str) -> anyhow::Result<()> {
+    #[cfg(target_os = "windows")]
+    {
+        std::process::Command::new("cmd")
+            .args(["/c", "start", "", url])
+            .spawn()
+            .map_err(|e| anyhow::anyhow!("launching default browser: {e}"))?;
+    }
+    #[cfg(target_os = "macos")]
+    {
+        std::process::Command::new("open")
+            .arg(url)
+            .spawn()
+            .map_err(|e| anyhow::anyhow!("launching open: {e}"))?;
+    }
+    #[cfg(all(target_os = "linux", feature = "gui"))]
+    {
+        std::process::Command::new("xdg-open")
+            .arg(url)
+            .spawn()
+            .map_err(|e| anyhow::anyhow!("launching xdg-open: {e}"))?;
+    }
+    Ok(())
+}

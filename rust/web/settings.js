@@ -98,6 +98,21 @@ function render() {
   pane.querySelector('#btn-save').addEventListener('click', save);
   pane.querySelector('#btn-reset').addEventListener('click', resetDefaults);
   pane.querySelector('#btn-open-cfg').addEventListener('click', openInEditor);
+
+  // CSP default-src 'self' + no shell plugin means <a target="_blank">
+  // does nothing on click. Intercept and route through open_url IPC.
+  for (const a of pane.querySelectorAll('a[href^="http"]')) {
+    a.addEventListener('click', ev => {
+      ev.preventDefault();
+      invoke('open_url', { url: a.href }).catch(e => {
+        const errorEl = document.querySelector('.settings-error');
+        if (errorEl) {
+          errorEl.textContent = `Open link failed: ${e}`;
+          errorEl.hidden = false;
+        }
+      });
+    });
+  }
 }
 
 async function save() {
