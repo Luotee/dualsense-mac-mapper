@@ -250,6 +250,16 @@ def trace(src_path: Path):
         left, right = midsorted[0], midsorted[1]
         fb_dict = {"triangle": top, "circle": right, "cross": bot, "square": left}
 
+    # Touchpad outer/inner — trace as Q-curve paths so the trapezoidal
+    # light-bar shape from the line drawing is preserved (the bbox-only
+    # variant collapsed it to a flat rectangle).
+    def smooth_to_path(c, eps_frac):
+        arc_ = cv2.arcLength(c, True)
+        eps_ = eps_frac * arc_
+        smooth = cv2.approxPolyDP(c, eps_, True).squeeze(1).astype(np.float64)
+        pts = smooth * scale + np.array([ox, oy])
+        return _smooth_polygon_to_qpath(pts)
+
     tp_outer_rect = None
     if touchpad_outer is not None:
         tp_outer_rect = {
@@ -257,6 +267,7 @@ def trace(src_path: Path):
             "y": round(ty(touchpad_outer["y"]), 2),
             "w": round(tr(touchpad_outer["w"]), 2),
             "h": round(tr(touchpad_outer["h"]), 2),
+            "path": smooth_to_path(touchpad_outer["c"], 0.001),
         }
     tp_inner_rect = None
     if tp_inner is not None:
@@ -265,6 +276,7 @@ def trace(src_path: Path):
             "y": round(ty(tp_inner["y"]), 2),
             "w": round(tr(tp_inner["w"]), 2),
             "h": round(tr(tp_inner["h"]), 2),
+            "path": smooth_to_path(tp_inner["c"], 0.001),
         }
 
     # ── Build D-pad arm paths (full pentagon contours) ──

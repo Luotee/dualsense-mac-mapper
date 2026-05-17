@@ -34,7 +34,9 @@ import {
   BODY_PATH,
   L1_RECT, R1_RECT, L2_RECT, R2_RECT,
   TOUCHPAD,
+  TOUCHPAD_OUTER_PATH,
   LIGHT_BAR_INNER,
+  LIGHT_BAR_INNER_PATH,
   DPAD_ARM_PATHS,
   FACE_BUTTONS,
   L_STICK, R_STICK,
@@ -208,15 +210,17 @@ export function render(parent, bindings) {
     svg.appendChild(cap);
   }
 
-  // Touchpad decorative shape
-  const tp = mkRect(ns, TOUCHPAD.x, TOUCHPAD.y, TOUCHPAD.w, TOUCHPAD.h, 'touchpad');
-  tp.setAttribute('rx', String(TOUCHPAD.rx));
+  // Touchpad outer — traced path (trapezoidal shape from the line
+  // drawing, not the flat bbox the cursor-mapping code uses).
+  const tp = document.createElementNS(ns, 'path');
+  tp.setAttribute('d', TOUCHPAD_OUTER_PATH);
+  tp.classList.add('touchpad');
   svg.appendChild(tp);
 
-  // Light bar inner seam — thin contour just inside the touchpad outline.
-  const bar = mkRect(ns, LIGHT_BAR_INNER.x, LIGHT_BAR_INNER.y,
-                     LIGHT_BAR_INNER.w, LIGHT_BAR_INNER.h, 'light-bar');
-  bar.setAttribute('rx', String(LIGHT_BAR_INNER.rx));
+  // Light bar inner seam — traced inner-line of the touchpad surround.
+  const bar = document.createElementNS(ns, 'path');
+  bar.setAttribute('d', LIGHT_BAR_INNER_PATH);
+  bar.classList.add('light-bar');
   bar.setAttribute('fill', 'none');
   svg.appendChild(bar);
 

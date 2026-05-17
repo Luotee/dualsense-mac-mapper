@@ -3,6 +3,21 @@
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/);
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.2.1] - 2026-05-18
+
+### Fixed
+
+- **Touchpad outline now matches the line drawing.** v2.2.0 rendered
+  the touchpad outer + light bar inner as flat `<rect>` bounding
+  boxes, which collapsed the trapezoidal light-bar shape from the
+  source drawing into a uniform rounded rectangle. Both now render
+  as traced Q-curve paths — the touchpad reads as the same wider-
+  on-top, narrower-on-bottom shape the rest of the controller was
+  retraced from. New constants `TOUCHPAD_OUTER_PATH` and
+  `LIGHT_BAR_INNER_PATH` in `controller_geom.generated.js`. The
+  bbox-form `TOUCHPAD` constant is retained for raw-coord → pixel
+  cursor mapping; only the visible decoration changes.
+
 ## [2.2.0] - 2026-05-17
 
 ### Changed
