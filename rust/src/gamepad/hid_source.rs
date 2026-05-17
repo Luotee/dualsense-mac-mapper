@@ -384,3 +384,26 @@ fn diff_emit(
     }
     prev_buttons.copy_from_slice(&cur.buttons);
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn quadrant_for_4_corners_axis_rect() {
+        // Standard midpoint (960, 540) — 1920×1080 touchpad space.
+        assert_eq!(quadrant_for(100,  100, 960, 540), QUAD_TL, "upper-left corner → TL (25)");
+        assert_eq!(quadrant_for(1800, 100, 960, 540), QUAD_TR, "upper-right corner → TR (26)");
+        assert_eq!(quadrant_for(100, 1000, 960, 540), QUAD_BL, "lower-left corner → BL (27)");
+        assert_eq!(quadrant_for(1800, 1000, 960, 540), QUAD_BR, "lower-right corner → BR (28)");
+    }
+
+    #[test]
+    fn quadrant_for_boundary_deterministic() {
+        // Boundary at mid_x / mid_y. `x < mid_x` is false when x == mid_x → right column.
+        // `y < mid_y` is false when y == mid_y → bottom row.
+        assert_eq!(quadrant_for(960, 540, 960, 540), QUAD_BR, "exact midpoint → BR (right + bottom)");
+        assert_eq!(quadrant_for(960, 100, 960, 540), QUAD_TR, "on X midline, upper → TR");
+        assert_eq!(quadrant_for(100, 540, 960, 540), QUAD_BL, "on Y midline, left → BL");
+    }
+}
