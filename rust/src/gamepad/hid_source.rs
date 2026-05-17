@@ -141,9 +141,23 @@ pub(crate) fn filter_cursor_delta(
     if state.recent_mag_sq.iter().all(|m| *m < dz_sq) {
         return None;
     }
-    // L3: acceleration curve added in Task 10. Fall-through with sensitivity only.
+    // L3: acceleration curve — linear interp gain between slow / fast thresholds
+    let mag_px = (mag_sq as f32).sqrt();
+    let slow = params.accel_slow_threshold() as f32;
+    let fast = params.accel_fast_threshold() as f32;
+    let g_slow = params.accel_gain_slow();
+    let g_fast = params.accel_gain_fast();
+    let gain = if mag_px < slow {
+        g_slow
+    } else if mag_px > fast {
+        g_fast
+    } else {
+        let t = (mag_px - slow) / (fast - slow);
+        g_slow + t * (g_fast - g_slow)
+    };
     let sens = params.sensitivity();
-    Some(((raw_dx as f32 * sens) as i32, (raw_dy as f32 * sens) as i32))
+    let total = sens * gain;
+    Some(((raw_dx as f32 * total) as i32, (raw_dy as f32 * total) as i32))
 }
 
 /// Cursor delta + touchpad click → 4-quadrant button events. Mutates
@@ -596,5 +610,42 @@ mod tests {
         assert_eq!(filter_cursor_delta(1, 1, &mut state, &params), None);
         let result = filter_cursor_delta(5, 5, &mut state, &params);
         assert!(result.is_some(), "5,5 above deadzone radius 2 should pass; got None");
+    }
+
+    #[test]
+    fn filter_curve_slow_uses_slow_gain() {
+        let mut state = TouchpadState::default();
+        let params = CursorParams::default();
+        params.set_deadzone_radius(0);  // disable L2 so 1 frame survives
+        params.set_sensitivity(1.0);    // isolate gain
+        let (dx, dy) = filter_cursor_delta(3, 0, &mut state, &params).unwrap();
+        // mag = 3 < slow_threshold 5 → gain = 0.5 → 3 * 1.0 * 0.5 = 1.5 → 1 (truncated)
+        assert_eq!(dx, 1, "slow region 3*0.5=1.5 → 1");
+        assert_eq!(dy, 0);
+    }
+
+    #[test]
+    fn filter_curve_fast_uses_fast_gain() {
+        let mut state = TouchpadState::default();
+        let params = CursorParams::default();
+        params.set_deadzone_radius(0);
+        params.set_sensitivity(1.0);
+        let (dx, dy) = filter_cursor_delta(30, 0, &mut state, &params).unwrap();
+        // mag = 30 > fast_threshold 20 → gain = 1.5 → 30 * 1.5 = 45
+        assert_eq!(dx, 45);
+        assert_eq!(dy, 0);
+    }
+
+    #[test]
+    fn filter_curve_mid_uses_linear_interp() {
+        let mut state = TouchpadState::default();
+        let params = CursorParams::default();
+        params.set_deadzone_radius(0);
+        params.set_sensitivity(1.0);
+        // dx=10 dy=0 → mag = 10, t = (10-5)/15 = 1/3 → gain = 0.5 + (1/3)*1 = 0.833
+        // dx_out = 10 * 0.833 = 8.33 → 8
+        let (dx, dy) = filter_cursor_delta(10, 0, &mut state, &params).unwrap();
+        assert_eq!(dx, 8, "mid region 10 * 0.833 = 8.33 → 8");
+        assert_eq!(dy, 0);
     }
 }
