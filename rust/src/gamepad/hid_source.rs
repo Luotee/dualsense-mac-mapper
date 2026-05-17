@@ -51,6 +51,10 @@ struct TouchpadState {
     touchdown_pos: Option<(u16, u16)>,
     last_click_quadrant: Option<u32>,
     prev_touchpad_btn: bool,
+    /// Last quadrant the finger 0 was over (None if not currently in
+    /// any quadrant — i.e., finger lifted). Used to dedupe per-frame
+    /// hover emits so only quadrant CHANGES produce events.
+    last_hover_quadrant: Option<u32>,
 }
 
 fn quadrant_for(x: u16, y: u16, mid_x: u16, mid_y: u16) -> u32 {
@@ -59,6 +63,36 @@ fn quadrant_for(x: u16, y: u16, mid_x: u16, mid_y: u16) -> u32 {
         (false, true)  => QUAD_TR,
         (true,  false) => QUAD_BL,
         (false, false) => QUAD_BR,
+    }
+}
+
+/// Per-frame hover quadrant emit with dedupe-on-change.
+///
+/// While the finger is active, emits `TouchpadHover` only when the
+/// quadrant computed from the current (raw_x, raw_y) differs from the
+/// last emitted quadrant. On finger lift, emits a sentinel
+/// `TouchpadHover { quadrant: 255, raw_x: 0, raw_y: 0 }` to signal
+/// "clear hover".
+///
+/// Uses the same `quadrant_for` axis-rect logic as click handling so
+/// hover preview and click outcome are guaranteed consistent.
+fn process_touchpad_hover<F: FnMut(GamepadEvent)>(
+    finger_active: bool,
+    cur_x: u16,
+    cur_y: u16,
+    state: &mut TouchpadState,
+    params: &CursorParams,
+    mut emit: F,
+) {
+    if finger_active {
+        let q = quadrant_for(cur_x, cur_y, params.midpoint_x(), params.midpoint_y());
+        if state.last_hover_quadrant != Some(q) {
+            state.last_hover_quadrant = Some(q);
+            emit(GamepadEvent::TouchpadHover { raw_x: cur_x, raw_y: cur_y, quadrant: q });
+        }
+    } else if state.last_hover_quadrant.is_some() {
+        state.last_hover_quadrant = None;
+        emit(GamepadEvent::TouchpadHover { raw_x: 0, raw_y: 0, quadrant: 255 });
     }
 }
 
@@ -114,6 +148,16 @@ fn process_touchpad(
         state.last_finger_pos = None;
         state.touchdown_pos = None;
     }
+
+    // Hover preview — emit per-frame quadrant change for live UI feedback.
+    process_touchpad_hover(
+        cur.finger0_active,
+        cur.finger0_x,
+        cur.finger0_y,
+        state,
+        params,
+        |ev| { let _ = tx.send(ev); },
+    );
 
     // Click: rising edge captures the quadrant using the touch-down
     // position (the user's intent), not the click-frame instantaneous
@@ -405,5 +449,47 @@ mod tests {
         assert_eq!(quadrant_for(960, 540, 960, 540), QUAD_BR, "exact midpoint → BR (right + bottom)");
         assert_eq!(quadrant_for(960, 100, 960, 540), QUAD_TR, "on X midline, upper → TR");
         assert_eq!(quadrant_for(100, 540, 960, 540), QUAD_BL, "on Y midline, left → BL");
+    }
+
+    #[test]
+    fn hover_dedupe_same_quadrant_emits_once() {
+        let mut state = TouchpadState::default();
+        let params = CursorParams::default();
+        let mut emitted: Vec<GamepadEvent> = Vec::new();
+        for _ in 0..5 {
+            process_touchpad_hover(true, 1500, 200, &mut state, &params, |ev| emitted.push(ev));
+        }
+        let hovers: Vec<_> = emitted.iter()
+            .filter(|e| matches!(e, GamepadEvent::TouchpadHover { .. }))
+            .collect();
+        assert_eq!(hovers.len(), 1, "expected 1 emit for 5 same-quadrant frames");
+    }
+
+    #[test]
+    fn hover_dedupe_quadrant_change_emits_again() {
+        let mut state = TouchpadState::default();
+        let params = CursorParams::default();
+        let mut emitted: Vec<GamepadEvent> = Vec::new();
+        process_touchpad_hover(true, 1500, 200, &mut state, &params, |ev| emitted.push(ev));  // TR
+        process_touchpad_hover(true, 1500, 200, &mut state, &params, |ev| emitted.push(ev));  // same — skip
+        process_touchpad_hover(true,  200, 200, &mut state, &params, |ev| emitted.push(ev));  // TL
+        let hovers: Vec<_> = emitted.iter()
+            .filter(|e| matches!(e, GamepadEvent::TouchpadHover { .. }))
+            .collect();
+        assert_eq!(hovers.len(), 2, "expected 2 emits: enter TR, then enter TL");
+    }
+
+    #[test]
+    fn hover_lift_emits_sentinel() {
+        let mut state = TouchpadState::default();
+        let params = CursorParams::default();
+        let mut emitted: Vec<GamepadEvent> = Vec::new();
+        process_touchpad_hover(true, 1500, 200, &mut state, &params, |ev| emitted.push(ev));  // enter TR
+        process_touchpad_hover(false,    0,   0, &mut state, &params, |ev| emitted.push(ev)); // lift
+        let last_quadrant = emitted.iter().filter_map(|e| match e {
+            GamepadEvent::TouchpadHover { quadrant, .. } => Some(*quadrant),
+            _ => None,
+        }).last().unwrap();
+        assert_eq!(last_quadrant, 255, "lift should emit sentinel quadrant 255");
     }
 }
