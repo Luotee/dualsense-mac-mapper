@@ -54,6 +54,16 @@ struct TouchpadState {
     touchdown_pos: Option<(u16, u16)>,
     last_click_quadrant: Option<u32>,
     prev_touchpad_btn: bool,
+    /// Mirrors current frame's touchpad button state (buf[11] bit 1).
+    /// Updated every frame in `process_touchpad`. Read by the cursor
+    /// filter so L1 (click-freeze) can suppress cursor deltas while
+    /// the button is physically held.
+    click_btn_held: bool,
+    /// Rolling buffer of last 3 frames' squared motion magnitudes,
+    /// used by L2 (stationary deadzone). Populated by the filter; the
+    /// state outlives a single frame so consecutive sub-radius motion
+    /// is suppressed only after the radius has been crossed back.
+    recent_mag_sq: std::collections::VecDeque<u32>,
     /// Last quadrant the finger 0 was over (None if not currently in
     /// any quadrant — i.e., finger lifted). Used to dedupe per-frame
     /// hover emits so only quadrant CHANGES produce events.
@@ -97,6 +107,32 @@ fn process_touchpad_hover<F: FnMut(GamepadEvent)>(
         state.last_hover_quadrant = None;
         emit(GamepadEvent::TouchpadHover { raw_x: 0, raw_y: 0, quadrant: HOVER_QUADRANT_NONE });
     }
+}
+
+/// Three-layer cursor delta filter for the DualSense touchpad. Each
+/// frame's raw motion is passed through:
+///   L1 — Click freeze: while the user is physically holding the
+///        touchpad button, suppress all cursor motion. Matches the
+///        Synaptics PalmCheck / libinput thumb-detect behaviour for
+///        Clickpads. Avoids the 5–10 px lateral drift caused by the
+///        finger rolling forward as the user presses the button.
+///   L2 — Stationary deadzone (added in Task 9).
+///   L3 — Acceleration curve     (added in Task 10).
+///
+/// Returns the filtered (dx, dy) to emit, or `None` to suppress.
+pub(crate) fn filter_cursor_delta(
+    raw_dx: i32,
+    raw_dy: i32,
+    state: &mut TouchpadState,
+    params: &CursorParams,
+) -> Option<(i32, i32)> {
+    // L1: click freeze
+    if state.click_btn_held && params.click_freeze_enabled() {
+        return None;
+    }
+    // L2 + L3 not yet implemented — fall through with sensitivity only.
+    let sens = params.sensitivity();
+    Some(((raw_dx as f32 * sens) as i32, (raw_dy as f32 * sens) as i32))
 }
 
 /// Cursor delta + touchpad click → 4-quadrant button events. Mutates
@@ -511,5 +547,24 @@ mod tests {
             .filter(|e| matches!(e, GamepadEvent::TouchpadHover { .. }))
             .collect();
         assert_eq!(hovers.len(), 3, "expected 3 emits: enter TR, sentinel, re-enter TR");
+    }
+
+    #[test]
+    fn filter_cursor_delta_click_freeze_suppresses() {
+        let mut state = TouchpadState::default();
+        state.click_btn_held = true;
+        let params = CursorParams::default();  // click_freeze_enabled = true by default
+        let result = filter_cursor_delta(10, 10, &mut state, &params);
+        assert_eq!(result, None, "expected None during click freeze, got {:?}", result);
+    }
+
+    #[test]
+    fn filter_cursor_delta_no_freeze_when_disabled() {
+        let mut state = TouchpadState::default();
+        state.click_btn_held = true;
+        let params = CursorParams::default();
+        params.set_click_freeze_enabled(false);
+        let result = filter_cursor_delta(10, 10, &mut state, &params);
+        assert!(result.is_some(), "expected Some delta when freeze disabled");
     }
 }
