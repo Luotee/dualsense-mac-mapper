@@ -137,21 +137,17 @@ regresses real, observed bugs the codebase already fixed once:
     atomic-rename used by `write_atomic` — every IPC mutator
     after the first would otherwise silently appear to do
     nothing. See v1.2.0 commits for the bug shape.
-11. **Controller "Connected" status requires evidence of real
-    input.** gilrs on Windows lies about DualSense BT
-    connection state — `EventType::Connected` fires at app
-    startup for every pad in the OS pairing list (whether
-    actually transmitting or not), and `is_connected()` stays
-    cached as `true` after a PS-button-hold power-off because
-    no `Disconnected` event ever fires. v1.2.0 keeps the Connected
-    state machine in `gamepad::GamepadSource::poll` gated on
-    `connection_armed`, which only flips true after a real
-    Button/Axis event arrives. The periodic `is_connected()`
-    poll runs only after armed, as a best-effort disconnect
-    detector; on user machines where gilrs caches it
-    permanently it does nothing useful. v1.3 replaces this with
-    raw HID via `hidapi-rs` so connection state, touchpad, IMU
-    and battery come from the 78-byte HID report directly.
+11. **Controller connection state is ground truth from raw
+    HID, not heuristic.** v2.0.0 replaced the gilrs path with
+    `hidapi` against the DualSense BT 0x31 report. The HID
+    worker thread's state machine (Searching → Handshaking →
+    Streaming) emits `Connected` on the first decoded 0x31
+    frame and `Disconnected` on either read-error or
+    `DISCONNECT_AFTER_TIMEOUTS` (50) consecutive 4 ms read
+    timeouts (~200 ms). No more `is_connected()` cache, no
+    more "must press a button to confirm" UX hack — the radio
+    link presence is observed directly via report stream
+    presence/absence.
 
 ## Anti-cheat self-discipline
 
