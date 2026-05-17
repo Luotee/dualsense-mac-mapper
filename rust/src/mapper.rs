@@ -13,6 +13,10 @@ pub enum KeyAction {
     /// Pure diagnostic — engine forwards as a Tauri event so the GUI
     /// can show a debug dot at the captured touchpad position.
     TouchpadClick { raw_x: u16, raw_y: u16, quadrant: u32 },
+    /// Continuous touchpad hover preview. Emitted per HID frame on
+    /// quadrant change, forwarded to Tauri as a diagnostic event for GUI
+    /// hover rendering. `quadrant = 255` is the sentinel for "finger lifted".
+    TouchpadHover { raw_x: u16, raw_y: u16, quadrant: u32 },
 }
 
 pub struct Mapper {
@@ -67,6 +71,9 @@ impl Mapper {
             GamepadEvent::MouseDelta { dx, dy } => vec![KeyAction::MouseMove { dx, dy }],
             GamepadEvent::TouchpadClick { raw_x, raw_y, quadrant } => {
                 vec![KeyAction::TouchpadClick { raw_x, raw_y, quadrant }]
+            }
+            GamepadEvent::TouchpadHover { raw_x, raw_y, quadrant } => {
+                vec![KeyAction::TouchpadHover { raw_x, raw_y, quadrant }]
             }
         }
     }

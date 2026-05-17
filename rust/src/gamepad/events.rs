@@ -23,4 +23,8 @@ pub enum GamepadEvent {
     /// captured position and the user can verify the chosen quadrant
     /// matches their intent.
     TouchpadClick { raw_x: u16, raw_y: u16, quadrant: u32 },
+    /// Continuous touchpad hover preview. Emitted per HID frame on
+    /// quadrant change (dedupe-on-change). `quadrant = 255` is the
+    /// sentinel for "finger lifted, clear UI hover".
+    TouchpadHover { raw_x: u16, raw_y: u16, quadrant: u32 },
 }

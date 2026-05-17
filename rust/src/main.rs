@@ -303,6 +303,8 @@ fn list_buttons(cfg: Option<Config>) -> Result<()> {
                     println!("  [touch ] dx={dx:<+4} dy={dy:<+4}  (touchpad cursor)"),
                 GamepadEvent::TouchpadClick { raw_x, raw_y, quadrant } =>
                     println!("  [tpclick] raw=({raw_x:<5},{raw_y:<5}) quadrant={quadrant}"),
+                GamepadEvent::TouchpadHover { raw_x, raw_y, quadrant } =>
+                    println!("  [tphover] raw=({raw_x:<5},{raw_y:<5}) quadrant={quadrant}"),
             }
         }
         std::thread::sleep(std::time::Duration::from_millis(10));

@@ -36,6 +36,9 @@ pub enum EngineEvent {
     /// Diagnostic — emitted once per touchpad click rising edge with
     /// the raw finger position captured at that instant.
     TouchpadClick { raw_x: u16, raw_y: u16, quadrant: u32 },
+    /// Diagnostic — emitted per HID frame on touchpad hover quadrant change.
+    /// `quadrant = 255` is the sentinel for "finger lifted, clear UI hover".
+    TouchpadHover { raw_x: u16, raw_y: u16, quadrant: u32 },
 }
 
 /// Snapshot of the controller's current connection state. Polled by the GUI
@@ -450,6 +453,13 @@ fn execute_action(
         }
         KeyAction::TouchpadClick { raw_x, raw_y, quadrant } => {
             let _ = event_tx.send(EngineEvent::TouchpadClick {
+                raw_x: *raw_x,
+                raw_y: *raw_y,
+                quadrant: *quadrant,
+            });
+        }
+        KeyAction::TouchpadHover { raw_x, raw_y, quadrant } => {
+            let _ = event_tx.send(EngineEvent::TouchpadHover {
                 raw_x: *raw_x,
                 raw_y: *raw_y,
                 quadrant: *quadrant,
