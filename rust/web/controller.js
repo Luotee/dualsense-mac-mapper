@@ -43,6 +43,23 @@ export const CORNER_RADIUS = {
   stickSlice: 0.7,
 };
 
+// Issue 4: per-button position fine-tune. Map id → { dx, dy }.
+// Tuner generates this; production reads and applies as SVG translate.
+// Empty by default — every button uses its baseline geometry.
+// Scale is intentionally not supported at this level (use cluster sliders).
+export const BUTTON_OVERRIDES = new Map([
+  // [13, { dx: -0.5, dy: 0 }],
+]);
+
+function applyButtonOverride(shape, id) {
+  const o = BUTTON_OVERRIDES.get(id);
+  if (!o) return;
+  const dx = o.dx ?? 0;
+  const dy = o.dy ?? 0;
+  if (dx === 0 && dy === 0) return;
+  shape.setAttribute('transform', `translate(${dx} ${dy})`);
+}
+
 // Stick well centres
 const L_STICK = { cx: 84,  cy: 82, r: 9 };
 const R_STICK = { cx: 156, cy: 82, r: 9 };
@@ -255,6 +272,7 @@ export function render(parent, bindings) {
 
     shape.dataset.id    = String(e.id);
     shape.dataset.label = e.label;
+    applyButtonOverride(shape, e.id);
     svg.appendChild(shape);
   }
 

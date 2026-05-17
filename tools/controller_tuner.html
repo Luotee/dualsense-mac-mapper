@@ -139,6 +139,10 @@
     overflow-y: auto;
     white-space: pre;
   }
+  .tuner-selected {
+    outline: 2px dashed #ffcc00;
+    outline-offset: 2px;
+  }
 </style>
 </head>
 <body>
@@ -167,6 +171,10 @@
 
     <!-- group templates rendered by JS -->
     <div id="group-container"></div>
+
+    <div id="selected-panel" style="padding: 8px 12px; border-top: 1px solid #444;">
+      <em>Click any button in the preview to fine-tune.</em>
+    </div>
 
   </div>
 </div>
@@ -213,6 +221,93 @@ const defaults = {
 
 let state = JSON.parse(JSON.stringify(defaults));
 let bindingKind = 'key';
+
+// ── Per-button dx/dy fine-tune state ──────────────────────────────────────
+let selectedId = null;
+const buttonOverrides = new Map();  // mirror of production BUTTON_OVERRIDES
+
+function selectButton(id) {
+  selectedId = id;
+  renderSelectedPanel();
+  // Visual ring on selected shape
+  document.querySelectorAll('#svg [data-id]').forEach(el => {
+    el.classList.toggle('tuner-selected', String(el.dataset.id) === String(id));
+  });
+}
+
+function clearSelection() {
+  selectedId = null;
+  document.querySelectorAll('#svg [data-id]').forEach(el => el.classList.remove('tuner-selected'));
+  renderSelectedPanel();
+}
+
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape') clearSelection();
+});
+
+function renderSelectedPanel() {
+  const panel = document.getElementById('selected-panel');
+  if (!panel) return;
+  if (selectedId === null) {
+    panel.innerHTML = '<em>Click any button in the preview to fine-tune.</em>';
+    return;
+  }
+  const o = buttonOverrides.get(selectedId) || {};
+  panel.innerHTML = `
+    <h3 style="margin: 0 0 8px; font-size: 13px;">Button id ${selectedId} <span style="color: #888; font-weight: normal; font-size: 11px;">(Esc to deselect)</span></h3>
+    <div class="row">
+      <label>dx</label>
+      <input type="range"  data-key="dx" min="-20" max="20" step="0.5" value="${o.dx ?? 0}">
+      <input type="number" data-key="dx" min="-20" max="20" step="0.5" value="${o.dx ?? 0}">
+    </div>
+    <div class="row">
+      <label>dy</label>
+      <input type="range"  data-key="dy" min="-20" max="20" step="0.5" value="${o.dy ?? 0}">
+      <input type="number" data-key="dy" min="-20" max="20" step="0.5" value="${o.dy ?? 0}">
+    </div>
+    <button id="btn-reset-this" style="margin-top: 8px; font-size: 11px;">Reset this button</button>
+  `;
+  // Wire range ↔ number sync + override write
+  panel.querySelectorAll('.row').forEach(row => {
+    const r = row.querySelector('input[type=range]');
+    const n = row.querySelector('input[type=number]');
+    const key = r.dataset.key;
+    const upd = src => {
+      const v = parseFloat(src.value);
+      (src === r ? n : r).value = src.value;
+      const cur = buttonOverrides.get(selectedId) || {};
+      cur[key] = v;
+      // Drop key if back to zero (keeps Map clean)
+      if (v === 0) delete cur[key];
+      if (Object.keys(cur).length === 0) {
+        buttonOverrides.delete(selectedId);
+      } else {
+        buttonOverrides.set(selectedId, cur);
+      }
+      render();
+      // Re-select after render (svg recreated)
+      requestAnimationFrame(() => selectButton(selectedId));
+    };
+    r.addEventListener('input', () => upd(r));
+    n.addEventListener('input', () => upd(n));
+  });
+  panel.querySelector('#btn-reset-this').addEventListener('click', () => {
+    buttonOverrides.delete(selectedId);
+    renderSelectedPanel();
+    render();
+    requestAnimationFrame(() => selectButton(selectedId));
+  });
+}
+
+// Tuner-side applyOverride (mirrors production controller.js):
+function applyOverride(shape, id) {
+  const o = buttonOverrides.get(id);
+  if (!o) return;
+  const dx = o.dx ?? 0;
+  const dy = o.dy ?? 0;
+  if (dx === 0 && dy === 0) return;
+  shape.setAttribute('transform', `translate(${dx} ${dy})`);
+}
 
 // ── Group definitions for the side panel ──────────────────────────────────
 // Each group has: title, keyPath, fields[{key, label, min, max, step}]
@@ -415,7 +510,11 @@ document.getElementById('btn-reset').addEventListener('click', () => {
       r.value = v; n.value = v;
     });
   });
+  // Also clear per-button overrides on full reset
+  buttonOverrides.clear();
+  selectedId = null;
   render();
+  renderSelectedPanel();
 });
 
 document.getElementById('btn-export').addEventListener('click', () => {
@@ -472,6 +571,24 @@ function generateExport() {
   lines.push(`const r_in  = ${fcs(s.stickw.r_in)};`);
   lines.push(`const r_out = ${fcs(s.stickw.r_out)};`);
   lines.push(`const d     = ${fcs(s.stickw.d)};`);
+  // BUTTON_OVERRIDES — only emit entries that exist
+  if (buttonOverrides.size > 0) {
+    lines.push('');
+    lines.push('// Issue 4: per-button position fine-tunes.');
+    const entries = [...buttonOverrides.entries()].map(([id, o]) => {
+      const parts = [];
+      if (o.dx !== undefined && o.dx !== 0) parts.push(`dx: ${o.dx}`);
+      if (o.dy !== undefined && o.dy !== 0) parts.push(`dy: ${o.dy}`);
+      return `  [${id}, { ${parts.join(', ')} }]`;
+    });
+    lines.push(`export const BUTTON_OVERRIDES = new Map([`);
+    lines.push(entries.join(',\n'));
+    lines.push(`]);`);
+  } else {
+    lines.push('');
+    lines.push('// BUTTON_OVERRIDES: no per-button tunes set; default empty Map.');
+    lines.push('export const BUTTON_OVERRIDES = new Map();');
+  }
   return lines.join('\n');
 }
 
@@ -557,6 +674,13 @@ function mkQuarter(cx, cy, dir, p) {
   ].join(' ');
 }
 
+// Helper: assign data-id, apply override, then append to svg.
+function appendHit(svg, shape, id) {
+  shape.dataset.id = String(id);
+  applyOverride(shape, id);
+  svg.appendChild(shape);
+}
+
 function render() {
   const svg = document.getElementById('svg');
   svg.innerHTML = '';
@@ -570,7 +694,7 @@ function render() {
   const tp = s.touchpad;
   svg.appendChild(mkRect(tp.x, tp.y, tp.w, tp.h, 'touchpad', tp.rx));
 
-  // Touchpad 4 quadrants — one rounded outer corner each.
+  // Touchpad 4 quadrants — one rounded outer corner each. ids: 25 tl, 26 tr, 27 bl, 28 br
   {
     const tq = s.tpquad;
     const cx = tp.x + tp.w / 2;
@@ -584,58 +708,60 @@ function render() {
     const botY   = cy + tq.gap / 2;
     const qcls = `hit ${bindClass(bindingKind)}`;
     const quads = [
-      { x: leftX,  y: topY, corner: 'tl' },
-      { x: rightX, y: topY, corner: 'tr' },
-      { x: leftX,  y: botY, corner: 'bl' },
-      { x: rightX, y: botY, corner: 'br' },
+      { x: leftX,  y: topY, corner: 'tl', id: 25 },
+      { x: rightX, y: topY, corner: 'tr', id: 26 },
+      { x: leftX,  y: botY, corner: 'bl', id: 27 },
+      { x: rightX, y: botY, corner: 'br', id: 28 },
     ];
     for (const q of quads) {
-      svg.appendChild(mkPath(mkTouchpadQuad(q.x, q.y, w, h, r, q.corner), qcls));
+      appendHit(svg, mkPath(mkTouchpadQuad(q.x, q.y, w, h, r, q.corner), qcls), q.id);
     }
   }
 
-  // Shoulders + triggers
+  // Shoulders + triggers (ids: 9 L1, 10 R1, 23 L2, 24 R2)
   const sh = s.shoulder, tr = s.trigger;
-  svg.appendChild(mkRect(sh.x_l, sh.y, sh.w, sh.h, 'meta-rect', 2));
-  svg.appendChild(mkRect(sh.x_r, sh.y, sh.w, sh.h, 'meta-rect', 2));
-  svg.appendChild(mkRect(tr.x_l, tr.y, tr.w, tr.h, 'meta-rect', 2));
-  svg.appendChild(mkRect(tr.x_r, tr.y, tr.w, tr.h, 'meta-rect', 2));
+  appendHit(svg, mkRect(sh.x_l, sh.y, sh.w, sh.h, 'hit meta-rect', 2), 9);
+  appendHit(svg, mkRect(sh.x_r, sh.y, sh.w, sh.h, 'hit meta-rect', 2), 10);
+  appendHit(svg, mkRect(tr.x_l, tr.y, tr.w, tr.h, 'hit meta-rect', 2), 23);
+  appendHit(svg, mkRect(tr.x_r, tr.y, tr.w, tr.h, 'hit meta-rect', 2), 24);
 
-  // Share / Options
-  svg.appendChild(mkRect(s.share.x,   s.share.y,   s.share.w,   s.share.h,   'meta-rect', 1));
-  svg.appendChild(mkRect(s.options.x, s.options.y, s.options.w, s.options.h, 'meta-rect', 1));
+  // Share / Options (ids: 4 Share, 6 Options)
+  appendHit(svg, mkRect(s.share.x,   s.share.y,   s.share.w,   s.share.h,   'hit meta-rect', 1), 4);
+  appendHit(svg, mkRect(s.options.x, s.options.y, s.options.w, s.options.h, 'hit meta-rect', 1), 6);
 
-  // PS
-  svg.appendChild(mkCircle(s.ps.cx, s.ps.cy, s.ps.r, 'meta-rect'));
+  // PS (id: 5)
+  appendHit(svg, mkCircle(s.ps.cx, s.ps.cy, s.ps.r, 'hit meta-rect'), 5);
 
-  // Face buttons
+  // Face buttons (ids: 3 Triangle top, 1 Circle right, 0 Cross bottom, 2 Square left)
   const fcls = `hit ${bindClass(bindingKind)}`;
   const f = s.face;
-  svg.appendChild(mkCircle(f.cx,            f.cy - f.spacing, f.r, fcls));
-  svg.appendChild(mkCircle(f.cx + f.spacing,f.cy,             f.r, fcls));
-  svg.appendChild(mkCircle(f.cx,            f.cy + f.spacing, f.r, fcls));
-  svg.appendChild(mkCircle(f.cx - f.spacing,f.cy,             f.r, fcls));
+  appendHit(svg, mkCircle(f.cx,            f.cy - f.spacing, f.r, fcls), 3);
+  appendHit(svg, mkCircle(f.cx + f.spacing,f.cy,             f.r, fcls), 1);
+  appendHit(svg, mkCircle(f.cx,            f.cy + f.spacing, f.r, fcls), 0);
+  appendHit(svg, mkCircle(f.cx - f.spacing,f.cy,             f.r, fcls), 2);
 
-  // Stick wells
+  // Stick wells (sprites only, no id)
   svg.appendChild(mkCircle(s.lstick.cx, s.lstick.cy, s.lstick.r, 'stick-ring'));
   svg.appendChild(mkCircle(s.rstick.cx, s.rstick.cy, s.rstick.r, 'stick-ring'));
 
-  // D-pad pentagons
+  // D-pad pentagons (ids: 11 up, 12 down, 13 left, 14 right)
   const dcls = `hit wedge ${bindClass(bindingKind)}`;
-  for (const dir of ['up','down','left','right']) {
-    svg.appendChild(mkPath(mkArrow(s.dpad.cx, s.dpad.cy, dir, s.dpad), dcls));
+  const dpadDirs = [['up',11],['down',12],['left',13],['right',14]];
+  for (const [dir, id] of dpadDirs) {
+    appendHit(svg, mkPath(mkArrow(s.dpad.cx, s.dpad.cy, dir, s.dpad), dcls), id);
   }
 
-  // Stick donut quarters
-  for (const [scx, scy] of [[s.lstick.cx, s.lstick.cy], [s.rstick.cx, s.rstick.cy]]) {
-    for (const dir of ['up','down','left','right']) {
-      svg.appendChild(mkPath(mkQuarter(scx, scy, dir, s.stickw), dcls));
+  // Stick donut quarters (L: 15 up, 16 down, 17 left, 18 right; R: 19-22)
+  const stickDirs = [['up',0],['down',1],['left',2],['right',3]];
+  for (const [scx, scy, base] of [[s.lstick.cx, s.lstick.cy, 15], [s.rstick.cx, s.rstick.cy, 19]]) {
+    for (const [dir, off] of stickDirs) {
+      appendHit(svg, mkPath(mkQuarter(scx, scy, dir, s.stickw), dcls), base + off);
     }
   }
 
-  // L3 / R3 inner press
-  svg.appendChild(mkCircle(s.lstick.cx, s.lstick.cy, s.stickpress.r, fcls));
-  svg.appendChild(mkCircle(s.rstick.cx, s.rstick.cy, s.stickpress.r, fcls));
+  // L3 / R3 inner press (ids: 7 L3, 8 R3)
+  appendHit(svg, mkCircle(s.lstick.cx, s.lstick.cy, s.stickpress.r, fcls), 7);
+  appendHit(svg, mkCircle(s.rstick.cx, s.rstick.cy, s.stickpress.r, fcls), 8);
 
   // Derived labels
   document.querySelectorAll('[data-derived]').forEach(el => {
@@ -645,6 +771,12 @@ function render() {
 }
 
 render();
+
+// Hook click-to-select on the SVG container (event delegation; outlives render redraws).
+document.getElementById('svg').addEventListener('click', e => {
+  const hit = e.target.closest('[data-id]');
+  if (hit) selectButton(Number(hit.dataset.id));
+});
 </script>
 </body>
 </html>
