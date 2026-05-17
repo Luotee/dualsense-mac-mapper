@@ -26,6 +26,12 @@ async function reload() {
     touchpad_cursor_sensitivity: cfg.touchpad_cursor_sensitivity ?? 1.5,
     touchpad_midpoint_x: cfg.touchpad_midpoint_x ?? 960,
     touchpad_midpoint_y: cfg.touchpad_midpoint_y ?? 540,
+    touchpad_click_freeze_enabled: cfg.touchpad_click_freeze_enabled ?? true,
+    touchpad_accel_slow_threshold: cfg.touchpad_accel_slow_threshold ?? 5,
+    touchpad_accel_fast_threshold: cfg.touchpad_accel_fast_threshold ?? 20,
+    touchpad_accel_gain_slow: cfg.touchpad_accel_gain_slow ?? 0.5,
+    touchpad_accel_gain_fast: cfg.touchpad_accel_gain_fast ?? 1.5,
+    touchpad_deadzone_radius: cfg.touchpad_deadzone_radius ?? 2,
   };
 }
 
@@ -91,6 +97,35 @@ function render() {
         <label for="f-touchpad-mid-y">Quadrant midpoint Y <span class="hint">(raw, default 540)</span></label>
         <input id="f-touchpad-mid-y" type="number" step="1" min="1" max="4094"
                value="${current.touchpad_midpoint_y}">
+      </div>
+      <div class="field field-toggle">
+        <label for="f-tp-click-freeze">Click freeze <span class="hint">(suppress cursor while touchpad button held — anti-drift)</span></label>
+        <input id="f-tp-click-freeze" type="checkbox" ${current.touchpad_click_freeze_enabled ? 'checked' : ''}>
+      </div>
+      <div class="field">
+        <label for="f-tp-accel-slow-thr">Accel slow threshold <span class="hint">(raw px/frame; cursor below this uses slow gain)</span></label>
+        <input id="f-tp-accel-slow-thr" type="number" step="1" min="1" max="20"
+               value="${current.touchpad_accel_slow_threshold}">
+      </div>
+      <div class="field">
+        <label for="f-tp-accel-fast-thr">Accel fast threshold <span class="hint">(raw px/frame; cursor above this uses fast gain)</span></label>
+        <input id="f-tp-accel-fast-thr" type="number" step="1" min="5" max="100"
+               value="${current.touchpad_accel_fast_threshold}">
+      </div>
+      <div class="field">
+        <label for="f-tp-accel-gain-slow">Accel slow gain <span class="hint">(0.1–1.0; smaller = more precision at slow speeds)</span></label>
+        <input id="f-tp-accel-gain-slow" type="number" step="0.05" min="0.1" max="1.0"
+               value="${current.touchpad_accel_gain_slow}">
+      </div>
+      <div class="field">
+        <label for="f-tp-accel-gain-fast">Accel fast gain <span class="hint">(1.0–5.0; larger = more flick speed)</span></label>
+        <input id="f-tp-accel-gain-fast" type="number" step="0.05" min="1.0" max="5.0"
+               value="${current.touchpad_accel_gain_fast}">
+      </div>
+      <div class="field">
+        <label for="f-tp-deadzone">Stationary deadzone <span class="hint">(raw px; 3-frame rolling — anti-jitter)</span></label>
+        <input id="f-tp-deadzone" type="number" step="1" min="0" max="50"
+               value="${current.touchpad_deadzone_radius}">
       </div>
     </div>
 
@@ -161,6 +196,12 @@ async function save() {
     touchpad_cursor_sensitivity: parseFloat(document.getElementById('f-touchpad-sens').value),
     touchpad_midpoint_x: parseInt(document.getElementById('f-touchpad-mid-x').value, 10),
     touchpad_midpoint_y: parseInt(document.getElementById('f-touchpad-mid-y').value, 10),
+    touchpad_click_freeze_enabled: document.getElementById('f-tp-click-freeze').checked,
+    touchpad_accel_slow_threshold: parseInt(document.getElementById('f-tp-accel-slow-thr').value, 10),
+    touchpad_accel_fast_threshold: parseInt(document.getElementById('f-tp-accel-fast-thr').value, 10),
+    touchpad_accel_gain_slow: parseFloat(document.getElementById('f-tp-accel-gain-slow').value),
+    touchpad_accel_gain_fast: parseFloat(document.getElementById('f-tp-accel-gain-fast').value),
+    touchpad_deadzone_radius: parseInt(document.getElementById('f-tp-deadzone').value, 10),
   };
   try {
     await invoke('set_settings', { settings: payload });
