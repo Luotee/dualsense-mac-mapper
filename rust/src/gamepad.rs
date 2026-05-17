@@ -122,9 +122,19 @@ impl GamepadSource {
             GamepadSourceInner::Real { gilrs, dpad_x_state, dpad_y_state, initial_scan_done } => {
                 if !*initial_scan_done {
                     // Synth a Connected event for any pad already known to gilrs
-                    // at construction time (Bluetooth re-pair case).
+                    // at construction time (Bluetooth re-pair case). Filter on
+                    // `is_connected()` — some Windows drivers leave stale
+                    // entries in `gilrs.gamepads()` from previous sessions
+                    // that are NOT actually plugged in, which made v1.1.0
+                    // show "Connected" before any real pad was attached.
                     for (_id, pad) in gilrs.gamepads() {
-                        tracing::info!(name = %pad.name(), "pre-connected gamepad detected at startup");
+                        if !pad.is_connected() {
+                            tracing::debug!(name = %pad.name(),
+                                "stale gilrs gamepad entry — skipping");
+                            continue;
+                        }
+                        tracing::info!(name = %pad.name(),
+                            "pre-connected gamepad detected at startup");
                         out.push(GamepadEvent::Connected);
                     }
                     *initial_scan_done = true;

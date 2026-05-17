@@ -3,6 +3,43 @@
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/);
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.1.1] - 2026-05-17
+
+### Fixed
+
+- **Status no longer shows "Connected" before any pad is plugged in.**
+  v1.1.0 enumerated every gilrs gamepad entry on first poll and
+  unconditionally emitted `Connected` for each — but some Windows
+  drivers leave stale phantom entries in `gilrs.gamepads()` from
+  previous sessions. The startup scan now filters on
+  `Gamepad::is_connected()` so only real, physically-attached pads
+  trigger the connected status.
+- **Stick wedge outlines.** A stick with all four directions bound to
+  the same colour used to render as a single ring of solid colour in
+  v1.1.0 — `.wedge { stroke: none; fill-opacity: 0.4 }` left no
+  visual separator between adjacent quarters. Each wedge now carries
+  a thin stroke in its binding colour (`--accent` for key,
+  `--macro` for macro) and the arc span shrinks from 90° to 84° so
+  there's a small gap between adjacent quarters. Four bound
+  directions read as four separate buttons.
+
+### Changed
+
+- **D-pad: four label pentagons, apex inward.** v1.1.0's outward-
+  arrow pentagons + underlying cross sprite read as one combined
+  glyph. The new design drops the cross sprite entirely and uses
+  inward-apex label shapes (flat outer base, tapered tip pointing
+  toward the d-pad centre), sized closer to the face-button cluster.
+  Reads as four independent targets and the press-ring animation
+  flashes one label outline per direction.
+- **L2 / R2 / L1 / R1 evenly spaced.** v1.1.0 had a 6 px gap between
+  the trigger row and the shoulder row but only 2 px between
+  shoulders and the body. Triggers move down by 4 px (ry 10 → 14)
+  so trigger-shoulder, shoulder-body, and body-top edges are
+  uniformly 2 px apart.
+
+[1.1.1]: https://github.com/Luotee/dualsense-mac-mapper/releases/tag/v1.1.1
+
 ## [1.1.0] - 2026-05-17
 
 ### Changed
