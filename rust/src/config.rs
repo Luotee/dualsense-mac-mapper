@@ -656,4 +656,36 @@ mod tests {
         let err = cfg.validate().unwrap_err().to_string();
         assert!(err.contains("touchpad_deadzone_radius"), "got: {err}");
     }
+
+    #[test]
+    fn v21_fix4_config_missing_filter_fields_auto_fills_defaults() {
+        // v2.0 / v2.1.0-fix4 style: existing touchpad fields present, new
+        // cursor filter fields absent. Must load via #[serde(default)].
+        let mut v: serde_json::Value = serde_json::from_str(r#"{
+            "version": 1,
+            "deadzone": 0.4,
+            "trigger_threshold": 0.5,
+            "min_press_ms": [8, 25],
+            "tick_jitter_ms": [0, 3],
+            "log_events": false,
+            "buttons": {},
+            "macros": {},
+            "touchpad_cursor_enabled": true,
+            "touchpad_cursor_sensitivity": 1.5,
+            "touchpad_midpoint_x": 960,
+            "touchpad_midpoint_y": 540
+        }"#).unwrap();
+        for id in 0u32..=28 {
+            v["buttons"][id.to_string()] =
+                serde_json::json!({"label": "", "type": "unbound"});
+        }
+        let s = serde_json::to_string(&v).unwrap();
+        let cfg = Config::load_from_str(&s).expect("fix4-style config must load");
+        assert_eq!(cfg.touchpad_accel_slow_threshold, 5);
+        assert_eq!(cfg.touchpad_accel_fast_threshold, 20);
+        assert!((cfg.touchpad_accel_gain_slow - 0.5).abs() < 1e-6);
+        assert!((cfg.touchpad_accel_gain_fast - 1.5).abs() < 1e-6);
+        assert_eq!(cfg.touchpad_deadzone_radius, 2);
+        assert!(cfg.touchpad_click_freeze_enabled);
+    }
 }
