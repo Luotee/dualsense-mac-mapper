@@ -3,6 +3,45 @@
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/);
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.0.0] - 2026-05-17
+
+### Breaking changes
+
+- **gilrs removed.** Non-DualSense pads (Xbox, 8BitDo, generic
+  XInput) are no longer supported. Users on those pads should
+  stay on v1.2.0. The on-disk `dualsense-mapper.json` schema is
+  unchanged — config files migrate as-is.
+
+### Changed
+
+- **Controller source is now raw HID via `hidapi-rs`.** A worker
+  thread opens the DualSense BT device (`054c:0ce6`), sends a
+  feature `0x05` calibration read to unlock 0x31 mode, and
+  blocking-reads 78-byte 0x31 reports. Each frame is decoded to a
+  `DsState`, diffed against the previous snapshot, and the deltas
+  pushed to the engine as `GamepadEvent`s through the same
+  channel pattern the v1.x fake source used.
+- **Connection state is ground truth.** The
+  `Searching → Handshaking → Streaming` state machine emits
+  `Connected` on the first decoded 0x31 frame and `Disconnected`
+  on either read-error or 50 consecutive 4 ms read-timeouts
+  (~200 ms). Pad-on → status flips within ~500 ms; PS-hold off →
+  status flips within ~250 ms. No more 24-second "press any
+  button to confirm" wait, no more stuck "Connected" after a
+  clean power-off.
+- **Single exe size**: 11.3 MB → 10.8 MB (gilrs + ~30 transitive
+  deps removed).
+
+### Deferred
+
+- DualSense USB transport (v2.0.1).
+- DualSense Edge (`054c:0df2`) (v2.0.1).
+- Touchpad-as-mouse binding type (v2.1).
+- IMU axes for bindings, haptic feedback, adaptive triggers
+  (v2.2 +).
+
+[2.0.0]: https://github.com/Luotee/dualsense-mac-mapper/releases/tag/v2.0.0
+
 ## [1.2.0] - 2026-05-17
 
 ### Fixed

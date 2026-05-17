@@ -6,10 +6,16 @@ PS5 DualSense → keyboard mapper. Single executable, JSON config, supports macr
 
 Phase 1: Windows build. macOS support comes in Phase 2.
 
+## Supported hardware
+
+- **DualSense PS5 controller** (`054c:0ce6`) over **Bluetooth**.
+
+v2.0.0 dropped the gilrs path and reads the DualSense BT 0x31 report directly via hidapi. **USB transport and DualSense Edge are deferred to v2.0.1**; non-DualSense pads (Xbox / 8BitDo / generic XInput) are not supported — last release with that support was v1.2.0.
+
 ## Quick start (Windows, double-click)
 
 1. Download `dualsense-mapper.exe` from the [latest release](https://github.com/Luotee/dualsense-mac-mapper/releases) into a folder you can write to (e.g. `C:\Users\<you>\Downloads\dualsense-mapper\`).
-2. Plug in DualSense via USB.
+2. Pair DualSense over Bluetooth (PS-button-hold + Share-button-hold until the bar flashes, then add from Windows Bluetooth settings).
 3. Double-click `dualsense-mapper.exe`. The console window opens with a startup banner. On first run it also writes `dualsense-mapper.json` next to the exe — that file has an inline keyboard cheat sheet at the top.
 4. Press gamepad buttons; the mapped keys are sent to the focused application.
 5. To customize: open `dualsense-mapper.json` in Notepad, change the `value` field of any binding to a key name from the cheat sheet, save, restart the exe.
