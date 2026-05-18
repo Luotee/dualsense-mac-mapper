@@ -1,4 +1,4 @@
-# dualsense-mac-mapper — Contributor Guidelines
+# dualsense-mapper — Contributor Guidelines
 
 ## If You Are an AI Agent
 

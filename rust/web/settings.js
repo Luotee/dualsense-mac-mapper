@@ -151,7 +151,7 @@ function render() {
       <p>
         <strong>DualSense Mapper</strong> v${appVersion}<br>
         Built with <a href="https://tauri.app/" target="_blank" rel="noreferrer">Tauri</a>.
-        See the <a href="https://github.com/Luotee/dualsense-mac-mapper/releases" target="_blank" rel="noreferrer">GitHub releases</a> for changelog and updates.
+        See the <a href="https://github.com/Luotee/dualsense-mapper/releases" target="_blank" rel="noreferrer">GitHub releases</a> for changelog and updates.
       </p>
     </div>
   `;

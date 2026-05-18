@@ -3,6 +3,22 @@
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/);
 project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.2.4] - 2026-05-18
+
+### Fixed
+
+- **In-app GitHub links and contributor docs pointed to old repo name.**
+  Repository was renamed `dualsense-mac-mapper` → `dualsense-mapper` on
+  GitHub. While GitHub auto-redirects the old URL, the new name is now
+  canonical. Updated:
+  - `rust/web/settings.js` "About" pane — GitHub releases link in the
+    in-app Settings → About section.
+  - `rust/README.md` Quick-start — release download link.
+  - `CLAUDE.md` — contributor-guidelines title.
+  - `CHANGELOG.md` — all 16 release-tag URL anchors.
+  Legacy reference `legacy-python/dualsense-mac-mapper.py` (real frozen
+  filename) intentionally untouched.
+
 ## [2.2.3] - 2026-05-18
 
 ### Changed
@@ -285,7 +301,7 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - IMU axes for bindings, haptic feedback, adaptive triggers
   (v2.2 +).
 
-[2.0.0]: https://github.com/Luotee/dualsense-mac-mapper/releases/tag/v2.0.0
+[2.0.0]: https://github.com/Luotee/dualsense-mapper/releases/tag/v2.0.0
 
 ## [1.2.0] - 2026-05-17
 
@@ -356,7 +372,7 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   disconnect detector, and is known to be incomplete (see
   Known limitations).
 
-[1.2.0]: https://github.com/Luotee/dualsense-mac-mapper/releases/tag/v1.2.0
+[1.2.0]: https://github.com/Luotee/dualsense-mapper/releases/tag/v1.2.0
 
 ## [1.1.4] - 2026-05-17
 
@@ -371,7 +387,7 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   proper rotations (`(-x, -y)` 180° for DOWN and `(y, -x)` 90° CCW
   for LEFT), matching the fix that landed in `mkArrow` in v1.1.2.
 
-[1.1.4]: https://github.com/Luotee/dualsense-mac-mapper/releases/tag/v1.1.4
+[1.1.4]: https://github.com/Luotee/dualsense-mapper/releases/tag/v1.1.4
 
 ## [1.1.3] - 2026-05-17
 
@@ -396,7 +412,7 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   Bookmark this file for future visual tweaks — it's tracked in the
   repo as a permanent design tool.
 
-[1.1.3]: https://github.com/Luotee/dualsense-mac-mapper/releases/tag/v1.1.3
+[1.1.3]: https://github.com/Luotee/dualsense-mapper/releases/tag/v1.1.3
 
 ## [1.1.2] - 2026-05-17
 
@@ -425,7 +441,7 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   stroke so the hit zone is discoverable while still reading as
   "not bound" (no fill).
 
-[1.1.2]: https://github.com/Luotee/dualsense-mac-mapper/releases/tag/v1.1.2
+[1.1.2]: https://github.com/Luotee/dualsense-mapper/releases/tag/v1.1.2
 
 ## [1.1.1] - 2026-05-17
 
@@ -462,7 +478,7 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   so trigger-shoulder, shoulder-body, and body-top edges are
   uniformly 2 px apart.
 
-[1.1.1]: https://github.com/Luotee/dualsense-mac-mapper/releases/tag/v1.1.1
+[1.1.1]: https://github.com/Luotee/dualsense-mapper/releases/tag/v1.1.1
 
 ## [1.1.0] - 2026-05-17
 
@@ -504,7 +520,7 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   palettes side-by-side; used during brainstorming before this
   release picked Gruvbox Dark.
 
-[1.1.0]: https://github.com/Luotee/dualsense-mac-mapper/releases/tag/v1.1.0
+[1.1.0]: https://github.com/Luotee/dualsense-mapper/releases/tag/v1.1.0
 
 ## [1.0.6] - 2026-05-17
 
@@ -534,7 +550,7 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Two new `parse_key` tests cover punctuation round-trip and the
   six L/R modifier aliases. Test count: 49 → 51.
 
-[1.0.6]: https://github.com/Luotee/dualsense-mac-mapper/releases/tag/v1.0.6
+[1.0.6]: https://github.com/Luotee/dualsense-mapper/releases/tag/v1.0.6
 
 ## [1.0.5] - 2026-05-17
 
@@ -554,7 +570,7 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   path anyway. The hint text was misleading — removed for now until
   Esc handling is repaired.
 
-[1.0.5]: https://github.com/Luotee/dualsense-mac-mapper/releases/tag/v1.0.5
+[1.0.5]: https://github.com/Luotee/dualsense-mapper/releases/tag/v1.0.5
 
 ## [1.0.4] - 2026-05-17
 
@@ -582,7 +598,7 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   multi-resolution container so the smaller layers stay
   hand-tuned instead of resampled from the 256 master.
 
-[1.0.4]: https://github.com/Luotee/dualsense-mac-mapper/releases/tag/v1.0.4
+[1.0.4]: https://github.com/Luotee/dualsense-mapper/releases/tag/v1.0.4
 
 ## [1.0.3] - 2026-05-16
 
@@ -599,7 +615,7 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   rather than the only exit path. Users who want background mapping
   while the window is hidden should minimise to the taskbar instead.
 
-[1.0.3]: https://github.com/Luotee/dualsense-mac-mapper/releases/tag/v1.0.3
+[1.0.3]: https://github.com/Luotee/dualsense-mapper/releases/tag/v1.0.3
 
 ## [1.0.2] - 2026-05-16
 
@@ -643,7 +659,7 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   bound out of the box. `examples/maple_artale.json` is kept in sync
   with the default for parity.
 
-[1.0.2]: https://github.com/Luotee/dualsense-mac-mapper/releases/tag/v1.0.2
+[1.0.2]: https://github.com/Luotee/dualsense-mapper/releases/tag/v1.0.2
 
 ## [1.0.1] - 2026-05-16
 
@@ -657,7 +673,7 @@ Cosmetic patch on top of v1.0.0. No code or behaviour change.
   button itself, so anyone who later remapped L2 saw a stale label.
   Existing users with their own config are unaffected.
 
-[1.0.1]: https://github.com/Luotee/dualsense-mac-mapper/releases/tag/v1.0.1
+[1.0.1]: https://github.com/Luotee/dualsense-mapper/releases/tag/v1.0.1
 
 ## [1.0.0] - 2026-05-16
 
@@ -746,7 +762,7 @@ stays available via the new `--cli` flag.
   webkit2gtk dev libs still work. Production builds use
   `cargo build --release --target x86_64-pc-windows-gnu --features gui`.
 
-[1.0.0]: https://github.com/Luotee/dualsense-mac-mapper/releases/tag/v1.0.0
+[1.0.0]: https://github.com/Luotee/dualsense-mapper/releases/tag/v1.0.0
 
 ## [0.1.1] - 2026-05-16
 
@@ -842,5 +858,5 @@ Legacy Python (`legacy-python/`) remains in repo as frozen reference.
 - macOS support is Phase 2 (uses `enigo` 0.6's `CGEvent` backend, no
   code change expected in `keyboard.rs`).
 
-[0.1.1]: https://github.com/Luotee/dualsense-mac-mapper/releases/tag/v0.1.1
-[0.1.0]: https://github.com/Luotee/dualsense-mac-mapper/releases/tag/v0.1.0
+[0.1.1]: https://github.com/Luotee/dualsense-mapper/releases/tag/v0.1.1
+[0.1.0]: https://github.com/Luotee/dualsense-mapper/releases/tag/v0.1.0
