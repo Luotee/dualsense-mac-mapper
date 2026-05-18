@@ -14,7 +14,7 @@ v2.0.0 dropped the gilrs path and reads the DualSense BT 0x31 report directly vi
 
 ## Quick start (Windows, double-click)
 
-1. Download `dualsense-mapper.exe` from the [latest release](https://github.com/Luotee/dualsense-mac-mapper/releases) into a folder you can write to (e.g. `C:\Users\<you>\Downloads\dualsense-mapper\`).
+1. Download `dualsense-mapper.exe` from the [latest release](https://github.com/Luotee/dualsense-mapper/releases) into a folder you can write to (e.g. `C:\Users\<you>\Downloads\dualsense-mapper\`).
 2. Pair DualSense over Bluetooth (PS-button-hold + Share-button-hold until the bar flashes, then add from Windows Bluetooth settings).
 3. Double-click `dualsense-mapper.exe`. The console window opens with a startup banner. On first run it also writes `dualsense-mapper.json` next to the exe — that file has an inline keyboard cheat sheet at the top.
 4. Press gamepad buttons; the mapped keys are sent to the focused application.
